@@ -487,43 +487,65 @@ func applyRepetitionPenalty(logits: MLXArray, tokens: MLXArray, penalty: Float) 
     return result
 }
 
-/// Sample a token from logits using temperature and top-p.
+/// Sample a token from logits using temperature, top-k, and top-p.
+/// Matches the Python implementation: operates on logits throughout,
+/// then uses categorical (which applies softmax internally) to sample.
 /// Shared by both T3Model (LLaMA) and T3GPT2Model (Turbo).
-func sampleToken(logits: MLXArray, temperature: Float, topP: Float) -> MLXArray {
-    var scaled = logits
-    if temperature > 0 {
-        scaled = logits / MLXArray(temperature)
+func sampleToken(logits: MLXArray, temperature: Float, topK: Int = 0, topP: Float = 1.0) -> MLXArray {
+    var filtered = logits
+
+    // 1. Temperature scaling (on logits)
+    if temperature > 0 && temperature != 1.0 {
+        filtered = filtered / MLXArray(temperature)
     }
 
-    // Softmax
-    let probs = softmax(scaled, axis: -1)
+    // 2. Top-k filtering (on logits)
+    if topK > 0 {
+        let k = min(topK, filtered.dim(filtered.ndim - 1))
+        // Sort ascending, find the k-th largest value as threshold
+        let sorted = MLX.sorted(filtered, axis: -1)
+        let vocabSize = filtered.dim(filtered.ndim - 1)
+        let threshold = sorted[0..., (vocabSize - k)]
+        let mask = filtered .>= threshold.expandedDimensions(axis: -1)
+        filtered = MLX.where(mask, filtered, MLXArray(-Float.infinity))
+    }
 
+    // 3. Top-p (nucleus) filtering (on logits)
     if topP < 1.0 {
-        // Top-p (nucleus) sampling
-        let sorted = MLX.sorted(probs, axis: -1)
-        let sortedIndices = MLX.argSort(probs, axis: -1)
-        let cumProbs = MLX.cumsum(sorted, axis: -1)
+        // Sort descending by logit value
+        let sortedIndices = MLX.argSort(MLX.negative(filtered), axis: -1)
 
-        // Remove tokens with cumulative probability below threshold
-        let mask = cumProbs .< MLXArray(1.0 - topP)
-        let filteredProbs = MLX.where(mask, MLXArray(Float(0)), sorted)
+        // Gather logits in descending sorted order
+        let vocabSize = filtered.dim(filtered.ndim - 1)
+        var sortedLogitsVals = [Float](repeating: 0, count: vocabSize)
+        for v in 0..<vocabSize {
+            let idx = sortedIndices[0, v].item(Int.self)
+            sortedLogitsVals[v] = filtered[0, idx].item(Float.self)
+        }
+        let sortedLogits = MLXArray(sortedLogitsVals).reshaped([1, -1])
 
-        // Re-normalize
-        let sum = filteredProbs.sum(axis: -1, keepDims: true)
-        let normalized = filteredProbs / (sum + MLXArray(Float(1e-10)))
+        // Compute cumulative probabilities from sorted logits
+        let sortedProbs = softmax(sortedLogits, axis: -1)
+        let cumProbs = MLX.cumsum(sortedProbs, axis: -1)
 
-        // Sample from filtered distribution
-        let token = MLX.argMax(
-            MLXRandom.categorical(MLX.log(normalized + MLXArray(Float(1e-10)))),
-            axis: -1
-        )
+        // Mark tokens to remove: cumulative prob > topP
+        let toRemoveRaw = cumProbs .> MLXArray(topP)
+        // Shift right to keep at least the first token above threshold
+        let keepFirst = MLXArray.zeros([1, 1]).asType(.bool)
+        let toRemove = MLX.concatenated([keepFirst, toRemoveRaw[0..., ..<(vocabSize - 1)]], axis: -1)
 
-        // Map back to original indices
-        let batchIdx = MLXArray(0)
-        let tokenIdx = token.item(Int.self)
-        return sortedIndices[batchIdx, tokenIdx].reshaped([1])
-    } else {
-        // Simple categorical sampling
-        return MLXRandom.categorical(MLX.log(probs + MLXArray(Float(1e-10))))
+        // Set removed tokens to -inf in sorted space
+        let maskedSorted = MLX.where(toRemove, MLXArray(-Float.infinity), sortedLogits)
+
+        // Scatter back to original order
+        var result = [Float](repeating: -Float.infinity, count: vocabSize)
+        for v in 0..<vocabSize {
+            let origIdx = sortedIndices[0, v].item(Int.self)
+            result[origIdx] = maskedSorted[0, v].item(Float.self)
+        }
+        filtered = MLXArray(result).reshaped([1, -1])
     }
+
+    // 4. Sample using categorical (applies softmax internally on logits)
+    return MLXRandom.categorical(filtered)
 }
