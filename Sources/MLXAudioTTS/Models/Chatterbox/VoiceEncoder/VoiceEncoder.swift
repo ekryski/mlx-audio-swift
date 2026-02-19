@@ -10,67 +10,21 @@ import Foundation
 import MLX
 import MLXNN
 
-// MARK: - Stacked LSTM
-
-/// Multi-layer LSTM matching PyTorch's nn.LSTM(num_layers=N).
-class StackedLSTM: Module {
-    let inputSize: Int
-    let hiddenSize: Int
-    let numLayers: Int
-    let layers: [LSTM]
-
-    init(inputSize: Int, hiddenSize: Int, numLayers: Int = 1) {
-        self.inputSize = inputSize
-        self.hiddenSize = hiddenSize
-        self.numLayers = numLayers
-
-        self.layers = (0 ..< numLayers).map { i in
-            LSTM(inputSize: i == 0 ? inputSize : hiddenSize, hiddenSize: hiddenSize)
-        }
-    }
-
-    /// Forward pass through stacked LSTM layers.
-    ///
-    /// - Parameters:
-    ///   - x: Input tensor (B, T, inputSize).
-    ///   - hidden: Optional tuple (h_0, c_0), each (numLayers, B, hiddenSize).
-    /// - Returns: (output, (h_n, c_n)) where output is (B, T, hiddenSize).
-    func callAsFunction(_ x: MLXArray, hidden: (MLXArray, MLXArray)? = nil) -> (MLXArray, (MLXArray, MLXArray)) {
-        var output = x
-        var newH = [MLXArray]()
-        var newC = [MLXArray]()
-
-        for (i, layer) in layers.enumerated() {
-            let h: MLXArray? = hidden.map { $0.0[i] }
-            let c: MLXArray? = hidden.map { $0.1[i] }
-
-            let (allH, allC) = layer(output, hidden: h, cell: c)
-            output = allH
-
-            // Extract final timestep
-            let lastH = allH.ndim == 3 ? allH[0..., -1, 0...] : allH
-            let lastC = allC.ndim == 3 ? allC[0..., -1, 0...] : allC
-            newH.append(lastH)
-            newC.append(lastC)
-        }
-
-        let hN = MLX.stacked(newH, axis: 0)
-        let cN = MLX.stacked(newC, axis: 0)
-
-        return (output, (hN, cN))
-    }
-}
-
 // MARK: - Voice Encoder
 
 /// LSTM-based voice encoder for speaker embeddings.
 ///
 /// 3-layer LSTM (40→256) + linear projection (256→256) + L2 normalization.
 /// Processes mel spectrogram windows via sliding window inference.
+///
+/// Weight keys use 1-based naming (`lstm1`, `lstm2`, `lstm3`) matching Python MLX
+/// serialization of list-stored modules.
 public class VoiceEncoder: Module {
     let hp: VoiceEncoderConfiguration
 
-    @ModuleInfo var lstm: StackedLSTM
+    @ModuleInfo(key: "lstm1") var lstm1: LSTM
+    @ModuleInfo(key: "lstm2") var lstm2: LSTM
+    @ModuleInfo(key: "lstm3") var lstm3: LSTM
     @ModuleInfo var proj: Linear
 
     // Cosine similarity parameters (not used in inference, but loaded from weights)
@@ -79,9 +33,9 @@ public class VoiceEncoder: Module {
 
     public init(_ hp: VoiceEncoderConfiguration = .default) {
         self.hp = hp
-        self._lstm.wrappedValue = StackedLSTM(
-            inputSize: hp.numMels, hiddenSize: hp.veHiddenSize, numLayers: 3
-        )
+        self._lstm1.wrappedValue = LSTM(inputSize: hp.numMels, hiddenSize: hp.veHiddenSize)
+        self._lstm2.wrappedValue = LSTM(inputSize: hp.veHiddenSize, hiddenSize: hp.veHiddenSize)
+        self._lstm3.wrappedValue = LSTM(inputSize: hp.veHiddenSize, hiddenSize: hp.veHiddenSize)
         self._proj.wrappedValue = Linear(hp.veHiddenSize, hp.speakerEmbedSize)
         self._similarityWeight.wrappedValue = MLXArray(Float(10.0))
         self._similarityBias.wrappedValue = MLXArray(Float(-5.0))
@@ -89,35 +43,42 @@ public class VoiceEncoder: Module {
 
     // MARK: - Weight Sanitization
 
-    /// Sanitize PyTorch LSTM weights for MLX.
+    /// Sanitize PyTorch LSTM weights for MLX format.
     ///
-    /// Handles:
-    /// - `lstm.weight_ih_l0` → `lstm.layers.0.Wx`
-    /// - `lstm.weight_hh_l0` → `lstm.layers.0.Wh`
-    /// - `lstm.bias_ih_l0` + `lstm.bias_hh_l0` → `lstm.layers.0.bias` (combined)
+    /// Handles two weight formats:
+    /// 1. **MLX format** (from converted models): `lstm1.Wx`, `lstm2.Wh`, etc. — passed through as-is.
+    /// 2. **PyTorch format** (raw checkpoints): `lstm.weight_ih_l0` → `lstm1.Wx`, `lstm.bias_ih_l0` + `lstm.bias_hh_l0` → `lstm1.bias`.
     public func sanitize(weights: [String: MLXArray]) -> [String: MLXArray] {
+        // Check if weights are already in MLX format (lstm1.Wx, lstm2.Wx, etc.)
+        let hasMLXFormat = weights.keys.contains { $0.hasPrefix("lstm1.") || $0.hasPrefix("lstm2.") || $0.hasPrefix("lstm3.") }
+        if hasMLXFormat {
+            // Already in correct format — pass through
+            return weights
+        }
+
+        // Convert from PyTorch format: lstm.weight_ih_l0 → lstm1.Wx
         var newWeights = [String: MLXArray]()
         var biasIH = [Int: MLXArray]()
         var biasHH = [Int: MLXArray]()
 
         for (key, value) in weights {
             if key.contains("lstm.") {
-                // Parse LSTM weight keys like "lstm.weight_ih_l0"
-                if let match = key.range(of: #"lstm\.(weight_ih|weight_hh|bias_ih|bias_hh)_l(\d+)"#, options: .regularExpression) {
-                    let component = String(key[match])
+                if let _ = key.range(of: #"lstm\.(weight_ih|weight_hh|bias_ih|bias_hh)_l(\d+)"#, options: .regularExpression) {
+                    let component = String(key.split(separator: ".").last ?? "")
                     let parts = component.split(separator: "_")
-
-                    // Extract layer index (last char of last part)
                     let layerStr = String(parts.last!).replacingOccurrences(of: "l", with: "")
                     guard let layerIdx = Int(layerStr) else {
                         newWeights[key] = value
                         continue
                     }
 
+                    // Map to 1-based naming: layer 0 → lstm1, layer 1 → lstm2, etc.
+                    let lstmKey = "lstm\(layerIdx + 1)"
+
                     if component.contains("weight_ih") {
-                        newWeights["lstm.layers.\(layerIdx).Wx"] = value
+                        newWeights["\(lstmKey).Wx"] = value
                     } else if component.contains("weight_hh") {
-                        newWeights["lstm.layers.\(layerIdx).Wh"] = value
+                        newWeights["\(lstmKey).Wh"] = value
                     } else if component.contains("bias_ih") {
                         biasIH[layerIdx] = value
                     } else if component.contains("bias_hh") {
@@ -134,7 +95,7 @@ public class VoiceEncoder: Module {
         // Combine ih and hh biases (MLX LSTM uses a single combined bias)
         for (layerIdx, ih) in biasIH {
             if let hh = biasHH[layerIdx] {
-                newWeights["lstm.layers.\(layerIdx).bias"] = ih + hh
+                newWeights["lstm\(layerIdx + 1).bias"] = ih + hh
             }
         }
 
@@ -148,11 +109,22 @@ public class VoiceEncoder: Module {
     /// - Parameter mels: Batch of mel spectrograms (B, T, M) where T = vePartialFrames.
     /// - Returns: L2-normalized embeddings (B, speakerEmbedSize).
     public func callAsFunction(_ mels: MLXArray) -> MLXArray {
-        // Pass through LSTM
-        let (_, (hN, _)) = lstm(mels)
+        // Run through 3 LSTM layers sequentially
+        let lstmLayers: [LSTM] = [lstm1, lstm2, lstm3]
+        var output = mels
+        var finalHiddenStates = [MLXArray]()
+
+        for layer in lstmLayers {
+            let (allH, allC) = layer(output)
+            output = allH
+
+            // Extract final timestep hidden state
+            let lastH = allH.ndim == 3 ? allH[0..., -1, 0...] : allH
+            finalHiddenStates.append(lastH)
+        }
 
         // Get final hidden state from last layer
-        let finalHidden = hN[-1] // (B, H)
+        let finalHidden = finalHiddenStates.last! // (B, H)
 
         // Project
         var rawEmbeds = proj(finalHidden)
