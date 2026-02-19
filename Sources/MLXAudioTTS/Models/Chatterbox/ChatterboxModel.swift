@@ -506,6 +506,32 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
 
         eval(model)
 
+        // Ensure tokenizer files exist before loading
+        // Turbo: ships with slow tokenizer only (vocab.json + merges.txt) — generate fast tokenizer.json
+        let tokenizerJsonPath = modelDir.appendingPathComponent("tokenizer.json")
+        if !FileManager.default.fileExists(atPath: tokenizerJsonPath.path) {
+            let vocabPath = modelDir.appendingPathComponent("vocab.json")
+            let mergesPath = modelDir.appendingPathComponent("merges.txt")
+            if FileManager.default.fileExists(atPath: vocabPath.path),
+               FileManager.default.fileExists(atPath: mergesPath.path)
+            {
+                try generateTokenizerJson(
+                    vocabPath: vocabPath,
+                    mergesPath: mergesPath,
+                    tokenizerConfigPath: modelDir.appendingPathComponent("tokenizer_config.json"),
+                    outputPath: tokenizerJsonPath
+                )
+            }
+        }
+
+        // Regular: has tokenizer.json but missing tokenizer_config.json — generate minimal config
+        let tokenizerConfigPath = modelDir.appendingPathComponent("tokenizer_config.json")
+        if !FileManager.default.fileExists(atPath: tokenizerConfigPath.path) {
+            let minimalConfig: [String: Any] = ["tokenizer_class": "GPT2Tokenizer"]
+            let data = try JSONSerialization.data(withJSONObject: minimalConfig)
+            try data.write(to: tokenizerConfigPath)
+        }
+
         // Load tokenizer
         do {
             model.tokenizer = try await AutoTokenizer.from(modelFolder: modelDir)
@@ -593,4 +619,103 @@ private func resampleAudio(_ audio: MLXArray, fromSR: Int, toSR: Int) -> MLXArra
     let ceilValues = audio[ceilIndices]
 
     return floorValues * (1.0 - fractions) + ceilValues * fractions
+}
+
+// MARK: - Tokenizer Generation
+
+/// Generate `tokenizer.json` (fast tokenizer format) from `vocab.json` + `merges.txt`.
+///
+/// Chatterbox Turbo ships with a slow tokenizer (vocab.json + merges.txt) but
+/// swift-transformers requires tokenizer.json. This builds the fast tokenizer JSON
+/// from the available files, using GPT-2 style BPE with ByteLevel pre-tokenizer.
+///
+/// Pattern reused from Qwen3TTS which has the same requirement.
+private func generateTokenizerJson(
+    vocabPath: URL,
+    mergesPath: URL,
+    tokenizerConfigPath: URL,
+    outputPath: URL
+) throws {
+    // Read vocab
+    let vocabData = try Data(contentsOf: vocabPath)
+    let vocabDict = try JSONSerialization.jsonObject(with: vocabData) as? [String: Int] ?? [:]
+
+    // Read merges (skip header line "#version: ...")
+    let mergesText = try String(contentsOf: mergesPath, encoding: .utf8)
+    let mergeLines = mergesText.components(separatedBy: .newlines)
+        .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+
+    // Read added_tokens from tokenizer_config.json (if available)
+    var addedTokens = [[String: Any]]()
+    if let configData = try? Data(contentsOf: tokenizerConfigPath),
+       let configDict = try? JSONSerialization.jsonObject(with: configData) as? [String: Any],
+       let addedTokensDecoder = configDict["added_tokens_decoder"] as? [String: [String: Any]]
+    {
+        for (idStr, tokenInfo) in addedTokensDecoder {
+            guard let tokenId = Int(idStr),
+                  let content = tokenInfo["content"] as? String else { continue }
+            let entry: [String: Any] = [
+                "id": tokenId,
+                "content": content,
+                "single_word": tokenInfo["single_word"] as? Bool ?? false,
+                "lstrip": tokenInfo["lstrip"] as? Bool ?? false,
+                "rstrip": tokenInfo["rstrip"] as? Bool ?? false,
+                "normalized": tokenInfo["normalized"] as? Bool ?? false,
+                "special": tokenInfo["special"] as? Bool ?? true,
+            ]
+            addedTokens.append(entry)
+        }
+        addedTokens.sort { ($0["id"] as? Int ?? 0) < ($1["id"] as? Int ?? 0) }
+    }
+
+    // Build tokenizer.json — GPT-2 style BPE with ByteLevel pre-tokenizer
+    let tokenizerJson: [String: Any] = [
+        "version": "1.0",
+        "truncation": NSNull(),
+        "padding": NSNull(),
+        "added_tokens": addedTokens,
+        "normalizer": NSNull(),
+        "pre_tokenizer": [
+            "type": "Sequence",
+            "pretokenizers": [
+                [
+                    "type": "Split",
+                    "pattern": [
+                        "Regex":
+                            "(?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|\\p{N}{1,3}| ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|\\s*[\\r\\n]+|\\s+(?!\\S)|\\s+"
+                    ],
+                    "behavior": "Isolated",
+                    "invert": false,
+                ] as [String: Any],
+                [
+                    "type": "ByteLevel",
+                    "add_prefix_space": false,
+                    "trim_offsets": true,
+                    "use_regex": false,
+                ] as [String: Any],
+            ] as [[String: Any]],
+        ] as [String: Any],
+        "post_processor": NSNull(),
+        "decoder": [
+            "type": "ByteLevel",
+            "add_prefix_space": true,
+            "trim_offsets": true,
+            "use_regex": true,
+        ] as [String: Any],
+        "model": [
+            "type": "BPE",
+            "dropout": NSNull(),
+            "unk_token": NSNull(),
+            "continuing_subword_prefix": "",
+            "end_of_word_suffix": "",
+            "fuse_unk": false,
+            "byte_fallback": false,
+            "ignore_merges": false,
+            "vocab": vocabDict,
+            "merges": mergeLines,
+        ] as [String: Any],
+    ]
+
+    let jsonData = try JSONSerialization.data(withJSONObject: tokenizerJson, options: [.sortedKeys])
+    try jsonData.write(to: outputPath)
 }
