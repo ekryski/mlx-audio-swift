@@ -341,6 +341,7 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
                 textTokens: textTokens,
                 maxNewTokens: config.t3Config.maxSpeechTokens,
                 temperature: temperature,
+                topK: 1000,
                 topP: topP,
                 repetitionPenalty: 1.2
             )
@@ -360,11 +361,14 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
         }
         eval(speechTokens)
 
-        // Post-process: remove special tokens
+        // Post-process: remove OOV tokens and append silence
         let cleanTokens = dropInvalidTokens(speechTokens)
+        // Append 3 silence tokens (S3GEN_SIL = 4299) to reduce artifacts at end
+        let silenceTokens = MLXArray([Int32(4299), Int32(4299), Int32(4299)])
+        let finalTokens = MLX.concatenated([cleanTokens, silenceTokens])
 
         // Stage 2: S3Gen — speech tokens → mel → waveform
-        let tokenArr = cleanTokens.reshaped([1, -1])
+        let tokenArr = finalTokens.reshaped([1, -1])
         let tokenLen = MLXArray([Int32(tokenArr.dim(1))])
         let promptTokenLen = MLXArray([Int32(promptTokens.dim(1))])
 
@@ -394,7 +398,32 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
         eval(mel)
 
         // Vocoder: mel → waveform via HiFi-GAN
-        let (waveform, _) = s3gen.vocoder(mel)
+        var (waveform, _) = s3gen.vocoder(mel)
+
+        // Apply fade-in window to reduce vocoder spillover artifacts at start (matches Python trim_fade)
+        // 480 samples silence + 480 samples cosine ramp = 960 samples (40ms at 24kHz)
+        let nTrim = sampleRate / 50  // 480
+        let fadeLen = nTrim * 2      // 960
+        if waveform.dim(waveform.ndim - 1) >= fadeLen {
+            // Build fade: [zeros(480), cosine_ramp(480)] — matches Python trim_fade
+            let zeros = MLXArray.zeros([nTrim])
+            let cosValues = (0..<nTrim).map { i -> Float in
+                let t = Float.pi * (1.0 - Float(i) / Float(nTrim - 1))
+                return (cos(t) + 1) / 2
+            }
+            let cosineRamp = MLXArray(cosValues)
+            let trimFade = MLX.concatenated([zeros, cosineRamp])
+
+            // Multiply first fadeLen samples of waveform
+            let fadePart = waveform[0..., ..<fadeLen] * trimFade
+            let restPart = waveform[0..., fadeLen...]
+            waveform = MLX.concatenated([fadePart, restPart], axis: -1)
+        }
+
+        // Append small silence pad at end to prevent abrupt cutoff (50ms)
+        let padSamples = sampleRate / 20  // 1200 samples = 50ms at 24kHz
+        let silencePad = MLXArray.zeros(like: waveform[0..., ..<padSamples])
+        waveform = MLX.concatenated([waveform, silencePad], axis: -1)
 
         return waveform
     }

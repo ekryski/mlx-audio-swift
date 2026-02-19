@@ -253,6 +253,7 @@ public class T3GPT2Model: Module {
         textTokens: MLXArray,
         maxNewTokens: Int = 1000,
         temperature: Float = 0.8,
+        topK: Int = 1000,
         topP: Float = 0.95,
         repetitionPenalty: Float = 1.2
     ) -> MLXArray {
@@ -299,7 +300,7 @@ public class T3GPT2Model: Module {
             }
 
             // Sample
-            let nextToken = sampleToken(logits: logits, temperature: temperature, topP: topP)
+            let nextToken = sampleToken(logits: logits, temperature: temperature, topK: topK, topP: topP)
             eval(nextToken)
             let nextTokenId = nextToken[0].item(Int.self)
 
