@@ -290,7 +290,7 @@ public class T3GPT2Model: Module {
         var generatedIds = [Int]()
 
         // Generation loop
-        for step in 0 ..< maxNewTokens {
+        for _ in 0 ..< maxNewTokens {
             var logits = speechLogits.squeezed(axis: 1) // (1, vocab)
 
             // Apply repetition penalty
