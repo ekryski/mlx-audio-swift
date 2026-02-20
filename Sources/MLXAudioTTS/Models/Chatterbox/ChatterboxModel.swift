@@ -70,6 +70,9 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
     /// Text tokenizer loaded from tokenizer.json.
     public var tokenizer: Tokenizer?
 
+    /// S3TokenizerV2: converts audio → speech token IDs (loaded separately).
+    public var s3Tokenizer: S3TokenizerV2?
+
     /// Pre-computed default voice conditioning (from conds.safetensors).
     public var defaultConditioning: DefaultConditioning?
 
@@ -137,9 +140,7 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             } else if key.hasPrefix("s3gen.") {
                 var subKey = String(key.dropFirst("s3gen.".count))
 
-                // Drop speaker_encoder weights — not loaded into module hierarchy
-                if subKey.hasPrefix("speaker_encoder.") { continue }
-                // Drop tokenizer weights — baked-in S3 tokenizer not used in Swift
+                // Drop tokenizer weights — S3TokenizerV2 loaded separately from its own repo
                 if subKey.hasPrefix("tokenizer.") { continue }
 
                 // Regular model: strip `flow.` prefix so keys match module structure
@@ -165,6 +166,24 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             sanitizedT3 = t3Weights
         }
 
+        // Sanitize speaker_encoder weights via CAMPPlus
+        var speakerEncoderWeights = [String: MLXArray]()
+        var otherS3GenWeights = [String: MLXArray]()
+        for (key, value) in s3genWeights {
+            if key.hasPrefix("speaker_encoder.") {
+                let subKey = String(key.dropFirst("speaker_encoder.".count))
+                speakerEncoderWeights[subKey] = value
+            } else {
+                otherS3GenWeights[key] = value
+            }
+        }
+
+        // Run CAMPPlus sanitization on speaker_encoder weights
+        let sanitizedSpeakerEncoder = CAMPPlus.sanitize(
+            weights: speakerEncoderWeights,
+            model: s3gen.speakerEncoder
+        )
+
         // Reconstruct with prefixes
         for (key, value) in sanitizedVE {
             result["ve.\(key)"] = value
@@ -172,8 +191,11 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
         for (key, value) in sanitizedT3 {
             result["t3.\(key)"] = value
         }
-        for (key, value) in s3genWeights {
+        for (key, value) in otherS3GenWeights {
             result["s3gen.\(key)"] = value
+        }
+        for (key, value) in sanitizedSpeakerEncoder {
+            result["s3gen.speaker_encoder.\(key)"] = value
         }
 
         return result
@@ -205,87 +227,169 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
     // MARK: - Reference Audio Processing
 
     /// Process reference audio to extract speaker embedding and prompt tokens.
+    /// Conditioning result from reference audio processing.
+    struct RefAudioConditioning {
+        let t3Cond: T3Cond
+        /// S3Gen x-vector (speaker embedding for flow decoder)
+        let xVector: MLXArray
+        /// S3Gen prompt tokens (speech tokens for flow encoder input)
+        let s3genPromptToken: MLXArray
+        /// S3Gen prompt mel features (mel spectrogram for flow conditioning)
+        let s3genPromptFeat: MLXArray
+    }
+
     func prepareConditionals(
         refAudio: MLXArray,
         refAudioSR: Int = 24000
-    ) throws -> (T3Cond, MLXArray, MLXArray, MLXArray, MLXArray) {
+    ) throws -> RefAudioConditioning {
         var audio = refAudio
         if audio.ndim > 1 {
             audio = audio.mean(axis: 0)
         }
 
-        // Resample to 16kHz for VoiceEncoder
-        let s3Audio: MLXArray
-        if refAudioSR != ChatterboxConstants.s3SampleRate {
-            s3Audio = resampleAudio(audio, fromSR: refAudioSR, toSR: ChatterboxConstants.s3SampleRate)
-        } else {
-            s3Audio = audio
+        // --- Loudness normalization (Turbo only, matches Python norm_loudness) ---
+        // Python Chatterbox Turbo normalizes to -27 LUFS before any conditioning extraction.
+        // This ensures consistent conditioning strength regardless of input volume.
+        if config.isTurbo {
+            audio = normalizeLoudness(audio, targetLUFS: -27.0)
+            print("[Chatterbox]   Loudness normalized to -27 LUFS")
         }
 
-        // Resample to 24kHz for S3Gen decoder conditioning
-        let s3genAudio: MLXArray
+        // --- Audio at different sample rates ---
+        // 24kHz for S3Gen mel features (decoder conditioning)
+        let audio24k: MLXArray
         if refAudioSR != ChatterboxConstants.s3genSampleRate {
-            s3genAudio = resampleAudio(audio, fromSR: refAudioSR, toSR: ChatterboxConstants.s3genSampleRate)
+            audio24k = resampleAudio(audio, fromSR: refAudioSR, toSR: ChatterboxConstants.s3genSampleRate)
         } else {
-            s3genAudio = audio
+            audio24k = audio
         }
-
-        // Truncate to conditioning lengths
-        let encCondLen = config.encCondLen
         let decCondLen = config.decCondLen
+        let audio24kTrunc = audio24k.dim(0) > decCondLen ? audio24k[..<decCondLen] : audio24k
 
-        let s3AudioTrunc = s3Audio.dim(0) > encCondLen ? s3Audio[..<encCondLen] : s3Audio
-        let s3genAudioTrunc = s3genAudio.dim(0) > decCondLen ? s3genAudio[..<decCondLen] : s3genAudio
+        // 16kHz for S3TokenizerV2, CAMPPlus, VoiceEncoder — single resample, derive all variants
+        let audio16kFull: MLXArray
+        if refAudioSR != ChatterboxConstants.s3SampleRate {
+            audio16kFull = resampleAudio(audio, fromSR: refAudioSR, toSR: ChatterboxConstants.s3SampleRate)
+        } else {
+            audio16kFull = audio
+        }
+        let encCondLen = config.encCondLen
+        let audio16kEnc = audio16kFull.dim(0) > encCondLen ? audio16kFull[..<encCondLen] : audio16kFull
 
-        // 1. Speaker embedding from VoiceEncoder
-        let veMels = voiceEncoderMelSpectrogram(s3AudioTrunc)
+        // Derive 16kHz for S3Gen tokenizer/CAMPPlus from the already-resampled 16k audio.
+        // This is equivalent to resampling audio24kTrunc 24k→16k, but avoids a second
+        // expensive polyphase resample. The 16k equivalent of decCondLen (24k) samples:
+        let decCondLen16k = (decCondLen * ChatterboxConstants.s3SampleRate) / ChatterboxConstants.s3genSampleRate
+        let audio16kFromDec = audio16kFull.dim(0) > decCondLen16k
+            ? audio16kFull[..<decCondLen16k] : audio16kFull
+
+        // --- 1. VoiceEncoder: 256-dim speaker embedding for T3 ---
+        // Trim silence before computing speaker embedding (matches Python librosa.effects.trim)
+        let audio16kTrimmed = trimSilence(audio16kEnc, topDb: 20.0)
+        print("[Chatterbox]   VoiceEncoder: trimmed \(audio16kEnc.dim(0)) → \(audio16kTrimmed.dim(0)) samples")
+        let veMels = voiceEncoderMelSpectrogram(audio16kTrimmed, isTurbo: config.isTurbo)
         let veMelsTransposed = veMels.transposed().expandedDimensions(axis: 0)
         let speakerEmb = voiceEncoder.inference(
             mels: veMelsTransposed,
             melLens: [veMelsTransposed.dim(1)]
         )
-        eval(speakerEmb)
+        // No eval() here — defer to single eval below for GPU pipelining
 
-        // 2. Prompt speech tokens — S3TokenizerV2 not yet implemented in Swift.
-        // Fall back to default conditioning's prompt tokens if available.
-        // This gives T3 the speech pattern context needed to generate coherent
-        // tokens with proper EOS, while the speaker embedding captures the ref voice.
-        let promptSpeechTokens: MLXArray
-        if let defaultTokens = defaultConditioning?.condPromptSpeechTokens,
-           defaultTokens.dim(1) > 0 {
-            promptSpeechTokens = defaultTokens
-            print("[Chatterbox]   Using default prompt speech tokens as fallback (\(defaultTokens.shape))")
+        // --- 2. S3TokenizerV2: speech token IDs for T3 and S3Gen ---
+        let t3PromptSpeechTokens: MLXArray
+        let s3genPromptToken: MLXArray
+
+        if let s3tok = s3Tokenizer {
+            // T3 tokens: from encCondLen audio at 16kHz
+            let t3Mel = s3TokenizerLogMelSpectrogram(audio16kEnc) // (128, T)
+            let t3MelBatch = t3Mel.expandedDimensions(axis: 0) // (1, 128, T)
+            let t3MelLen = MLXArray([Int32(t3Mel.dim(1))])
+            let (t3Tokens, _) = s3tok(t3MelBatch, melLen: t3MelLen)
+            // No eval() here — defer to single eval below
+
+            // Truncate to speechCondPromptLen (150 for regular, 375 for turbo)
+            let plen = config.t3Config.speechCondPromptLen
+            t3PromptSpeechTokens = t3Tokens[0..., ..<min(plen, t3Tokens.dim(1))]
+
+            // S3Gen tokens: from decCondLen audio
+            let s3genMel = s3TokenizerLogMelSpectrogram(audio16kFromDec)
+            let s3genMelBatch = s3genMel.expandedDimensions(axis: 0)
+            let s3genMelLen = MLXArray([Int32(s3genMel.dim(1))])
+            let (s3genTokens, _) = s3tok(s3genMelBatch, melLen: s3genMelLen)
+            // No eval() here — defer to single eval below
+            s3genPromptToken = s3genTokens
+
+            print("[Chatterbox]   S3TokenizerV2: T3 tokens \(t3PromptSpeechTokens.shape) (plen=\(plen)), S3Gen tokens \(s3genPromptToken.shape)")
         } else {
-            promptSpeechTokens = MLXArray.zeros([1, 0]).asType(.int32)
+            // Fallback: use default conditioning tokens
+            print("[Chatterbox]   S3TokenizerV2 not loaded — falling back to defaults")
+            if let defaultTokens = defaultConditioning?.condPromptSpeechTokens,
+               defaultTokens.dim(1) > 0 {
+                t3PromptSpeechTokens = defaultTokens
+            } else {
+                t3PromptSpeechTokens = MLXArray.zeros([1, 0]).asType(.int32)
+            }
+            s3genPromptToken = defaultConditioning?.promptToken ?? MLXArray.zeros([1, 0]).asType(.int32)
         }
 
-        // 3. X-vector for S3Gen — CAMPPlus not yet fully implemented in Swift.
-        // Fall back to default conditioning's x-vector if available.
-        let xVector: MLXArray
-        if let defaultXV = defaultConditioning?.xVector,
-           MLX.abs(defaultXV).max().item(Float.self) > 0.001 {
-            xVector = defaultXV
-            print("[Chatterbox]   Using default x-vector as fallback (\(defaultXV.shape))")
-        } else {
-            xVector = MLXArray.zeros([1, 192])
-        }
+        // --- 3. CAMPPlus: 192-dim x-vector for S3Gen flow decoder ---
+        let xVector = s3gen.speakerEncoder.inference([audio16kFromDec])
+        // No eval() here — defer to single eval below
 
-        // 4. S3Gen prompt features
-        let promptFeat = s3genMelSpectrogram(
-            y: s3genAudioTrunc.expandedDimensions(axis: 0),
+        // --- 4. S3Gen prompt mel features ---
+        let s3genPromptFeat = s3genMelSpectrogram(
+            y: audio24kTrunc.expandedDimensions(axis: 0),
             samplingRate: ChatterboxConstants.s3genSampleRate
-        )
-        let promptFeatLen = MLXArray([Int32(promptFeat.dim(2))])
+        ) // (1, 80, T_mel)
+
+        // --- Single eval: evaluate entire computation graph at once ---
+        // This lets MLX pipeline all independent branches (VoiceEncoder, S3Tokenizer,
+        // CAMPPlus, mel) without GPU sync barriers between them.
+        eval(speakerEmb, s3genPromptFeat, xVector)
+        if s3Tokenizer != nil {
+            eval(t3PromptSpeechTokens, s3genPromptToken)
+        }
+        print("[Chatterbox]   VoiceEncoder: speakerEmb \(speakerEmb.shape)")
+        print("[Chatterbox]   CAMPPlus: xVector \(xVector.shape)")
+
+        // --- 5. Align token count and mel frame count ---
+        // Invariant: mel_frames = 2 * num_tokens (token_mel_ratio = 2)
+        var promptToken = s3genPromptToken
+        var promptFeat = s3genPromptFeat
+        let tokenMelRatio = 2
+
+        if promptToken.dim(1) > 0 && promptFeat.dim(2) > 0 {
+            let numTokens = promptToken.dim(1)
+            let melFrames = promptFeat.dim(2)
+            let expectedMel = numTokens * tokenMelRatio
+
+            if expectedMel < melFrames {
+                // Truncate mel to match tokens
+                promptFeat = promptFeat[0..., 0..., ..<expectedMel]
+            } else if expectedMel > melFrames {
+                // Truncate tokens to match mel
+                let maxTokens = melFrames / tokenMelRatio
+                if maxTokens > 0 {
+                    promptToken = promptToken[0..., ..<maxTokens]
+                }
+            }
+            print("[Chatterbox]   Aligned: promptToken \(promptToken.shape), promptFeat \(promptFeat.shape)")
+        }
 
         // Build T3Cond
         let t3Cond = T3Cond(
             speakerEmb: speakerEmb,
-            condPromptSpeechTokens: promptSpeechTokens.dim(1) > 0 ? promptSpeechTokens : nil,
+            condPromptSpeechTokens: t3PromptSpeechTokens.dim(1) > 0 ? t3PromptSpeechTokens : nil,
             condPromptSpeechEmb: nil,
             emotionAdv: MLXArray(Float(0.5))
         )
 
-        return (t3Cond, xVector, promptSpeechTokens, promptFeat, promptFeatLen)
+        return RefAudioConditioning(
+            t3Cond: t3Cond,
+            xVector: xVector,
+            s3genPromptToken: promptToken,
+            s3genPromptFeat: promptFeat
+        )
     }
 
     // MARK: - Speech Token Post-processing
@@ -333,13 +437,13 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
         if let refAudio = refAudio {
             print("[Chatterbox] Processing reference audio (shape: \(refAudio.shape))...")
             let condStart = CFAbsoluteTimeGetCurrent()
-            let (cond, xv, pt, pf, _) = try prepareConditionals(refAudio: refAudio)
+            let refCond = try prepareConditionals(refAudio: refAudio)
             print("[Chatterbox] Conditioning prepared in \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - condStart))s")
-            print("[Chatterbox]   speakerEmb: \(cond.speakerEmb.shape), promptTokens: \(pt.shape), promptFeat: \(pf.shape), xVector: \(xv.shape)")
-            t3Cond = cond
-            xVector = xv
-            promptTokens = pt
-            promptFeat = pf
+            print("[Chatterbox]   speakerEmb: \(refCond.t3Cond.speakerEmb.shape), s3genPromptToken: \(refCond.s3genPromptToken.shape), s3genPromptFeat: \(refCond.s3genPromptFeat.shape), xVector: \(refCond.xVector.shape)")
+            t3Cond = refCond.t3Cond
+            xVector = refCond.xVector
+            promptTokens = refCond.s3genPromptToken
+            promptFeat = refCond.s3genPromptFeat
         } else if let defaults = defaultConditioning {
             // Use pre-computed default voice
             t3Cond = T3Cond(
@@ -477,6 +581,15 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             waveform = MLX.concatenated([fadePart, restPart], axis: -1)
         }
 
+        // Peak-normalize output to ensure audible volume.
+        // The vocoder output can be quiet depending on conditioning strength.
+        // Scale so peak amplitude is ~0.95 (standard headroom for speech).
+        let peak = MLX.abs(waveform).max().item(Float.self)
+        if peak > 1e-6 {
+            let targetPeak: Float = 0.95
+            waveform = waveform * MLXArray(targetPeak / peak)
+        }
+
         print("[Chatterbox] Stage 3 complete: waveform \(waveform.shape) in \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - vocStart))s")
         return waveform
     }
@@ -581,7 +694,7 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             }
         }
 
-        // Update model parameters — allow unused keys since we drop speaker_encoder/tokenizer
+        // Update model parameters — allow unused keys since we drop tokenizer weights
         try model.update(parameters: ModuleParameters.unflattened(sanitizedWeights), verify: [])
 
         eval(model)
@@ -641,6 +754,34 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             }
         }
 
+        // Load S3TokenizerV2 from separate HuggingFace repo (needed for voice cloning)
+        let s3TokenizerRepo = "mlx-community/S3TokenizerV2"
+        do {
+            guard let s3RepoID = Repo.ID(rawValue: s3TokenizerRepo) else {
+                throw AudioGenerationError.invalidInput("Invalid S3Tokenizer repo ID")
+            }
+            let s3Dir = try await ModelUtils.resolveOrDownloadModel(
+                repoID: s3RepoID,
+                requiredExtension: "safetensors",
+                hfToken: hfToken
+            )
+            let s3WeightsURL = s3Dir.appendingPathComponent("model.safetensors")
+            if FileManager.default.fileExists(atPath: s3WeightsURL.path) {
+                let s3Tokenizer = S3TokenizerV2()
+                var s3Weights = try MLX.loadArrays(url: s3WeightsURL)
+                s3Weights = S3TokenizerV2.sanitize(weights: s3Weights, model: s3Tokenizer)
+                try s3Tokenizer.update(
+                    parameters: ModuleParameters.unflattened(s3Weights), verify: []
+                )
+                eval(s3Tokenizer)
+                model.s3Tokenizer = s3Tokenizer
+                print("[Chatterbox] Loaded S3TokenizerV2 from \(s3TokenizerRepo)")
+            }
+        } catch {
+            print("Warning: Could not load S3TokenizerV2: \(error)")
+            print("  Voice cloning will fall back to default conditioning tokens.")
+        }
+
         return model
     }
 }
@@ -683,22 +824,198 @@ private func loadChatterboxWeights(modelDir: URL) throws -> [String: MLXArray] {
 
 // MARK: - Audio Resampling
 
-/// Linear interpolation audio resampling.
+/// Polyphase FIR audio resampling with proper anti-aliasing.
+///
+/// Matches the quality of `scipy.signal.resample_poly` / `librosa.resample`:
+/// designs a windowed-sinc lowpass FIR filter, upsamples, filters, and downsamples.
+/// This prevents aliasing artifacts that occur with naive linear interpolation.
+///
+/// Uses a polyphase decomposition for efficiency: the FIR filter is split into
+/// `up` sub-filters (phases), and only the relevant phase is evaluated per output sample.
+/// Audio samples are bulk-extracted via `asArray()` for fast CPU-side computation.
 private func resampleAudio(_ audio: MLXArray, fromSR: Int, toSR: Int) -> MLXArray {
     guard fromSR != toSR else { return audio }
 
+    func gcd(_ a: Int, _ b: Int) -> Int {
+        var a = a, b = b
+        while b != 0 { (a, b) = (b, a % b) }
+        return a
+    }
+
+    let g = gcd(fromSR, toSR)
+    let up = toSR / g
+    let down = fromSR / g
+
     let inputLength = audio.dim(0)
-    let outputLength = Int(Double(inputLength) * Double(toSR) / Double(fromSR))
+    let outputLength = (inputLength * up + down - 1) / down
 
-    let inputIndices = MLXArray(0 ..< outputLength).asType(.float32) * Float(fromSR) / Float(toSR)
-    let floorIndices = MLX.floor(inputIndices).asType(.int32)
-    let ceilIndices = MLX.minimum(floorIndices + 1, MLXArray(Int32(inputLength - 1)))
-    let fractions = inputIndices - floorIndices.asType(.float32)
+    // Design lowpass FIR filter: windowed sinc with Kaiser window
+    let nZeroCrossings = 10
+    let filterHalfLen = nZeroCrossings * max(up, down)
+    let filterLen = 2 * filterHalfLen + 1
 
-    let floorValues = audio[floorIndices]
-    let ceilValues = audio[ceilIndices]
+    // Cutoff frequency: min(1/up, 1/down) to prevent aliasing
+    let fc = 1.0 / Float(max(up, down))
 
-    return floorValues * (1.0 - fractions) + ceilValues * fractions
+    var h = [Float](repeating: 0, count: filterLen)
+    let beta: Float = 5.0
+    let i0Beta = besselI0(beta)
+    for i in 0 ..< filterLen {
+        let n = Float(i - filterHalfLen)
+        // Sinc
+        let sincVal: Float = (n == 0) ? fc : fc * sin(Float.pi * fc * n) / (Float.pi * fc * n)
+        // Kaiser window
+        let x = 2.0 * Float(i) / Float(filterLen - 1) - 1.0
+        let arg = beta * sqrt(max(0, 1.0 - x * x))
+        h[i] = sincVal * besselI0(arg) / i0Beta
+    }
+
+    // Normalize filter so that passband gain = up
+    let filterSum = h.reduce(0, +)
+    let normFactor = Float(up) / filterSum
+    for i in 0 ..< filterLen { h[i] *= normFactor }
+
+    // Decompose filter into polyphase components: phase p has taps at indices p, p+up, p+2*up, ...
+    // For each output sample i: phase = (i * down) % up
+    // The convolution sum becomes a dot product of the phase's taps with input samples.
+    let tapsPerPhase = (filterLen + up - 1) / up
+    var polyphase = [[Float]](repeating: [Float](repeating: 0, count: tapsPerPhase), count: up)
+    for p in 0 ..< up {
+        var t = 0
+        var idx = p
+        while idx < filterLen {
+            polyphase[p][t] = h[idx]
+            t += 1
+            idx += up
+        }
+    }
+
+    // Bulk-extract audio samples (single memcpy, not per-element)
+    let flatAudio = audio.reshaped([-1]).asType(.float32)
+    eval(flatAudio)
+    let audioSamples = flatAudio.asArray(Float.self)
+
+    // Polyphase resampling: for each output sample, pick the right phase and dot-product
+    var output = [Float](repeating: 0, count: outputLength)
+    for i in 0 ..< outputLength {
+        let n = i * down  // Position in upsampled signal
+        let phase = n % up
+        let taps = polyphase[phase]
+
+        // First input sample that contributes: ceil((n - filterHalfLen) / up)
+        // But also the polyphase offset: startOrig = (n - phase) / up - (filterHalfLen - phase) / up
+        // Simplified: the k-th tap of this phase corresponds to input index (n / up) - k + correction
+        let baseOrig = (n - phase) / up  // Input index for tap 0 (before centering)
+        let centerOffset = filterHalfLen / up  // Centering shift
+
+        var sum: Float = 0
+        for t in 0 ..< tapsPerPhase {
+            let origIdx = baseOrig - centerOffset + t
+            if origIdx >= 0 && origIdx < inputLength {
+                sum += audioSamples[origIdx] * taps[t]
+            }
+        }
+        output[i] = sum
+    }
+
+    return MLXArray(output)
+}
+
+/// Modified Bessel function of the first kind, order 0.
+/// Used for Kaiser window computation.
+private func besselI0(_ x: Float) -> Float {
+    var sum: Float = 1.0
+    var term: Float = 1.0
+    let halfX = x / 2.0
+    for k in 1 ... 25 {
+        term *= (halfX / Float(k)) * (halfX / Float(k))
+        sum += term
+        if term < 1e-10 * sum { break }
+    }
+    return sum
+}
+
+// MARK: - LUFS Loudness Normalization
+
+/// Normalize audio loudness to a target LUFS level.
+///
+/// Matches Python Chatterbox Turbo's `norm_loudness()` which uses `pyloudnorm`
+/// to normalize reference audio to -27 LUFS before conditioning extraction.
+/// Uses an RMS-based approximation of integrated loudness (accurate for speech).
+///
+/// - Parameters:
+///   - audio: 1D audio waveform
+///   - targetLUFS: Target loudness in LUFS (default: -27)
+/// - Returns: Loudness-normalized audio
+private func normalizeLoudness(_ audio: MLXArray, targetLUFS: Float = -27.0) -> MLXArray {
+    // Compute RMS (approximation of integrated loudness for speech signals)
+    let rms = MLX.sqrt(MLX.mean(audio * audio)).item(Float.self)
+    guard rms > 1e-10 else { return audio }
+
+    // Convert RMS to approximate LUFS (RMS dBFS ≈ LUFS for speech with K-weighting ≈ unity)
+    let currentLUFS = 20.0 * log10(rms)
+    let gainDB = targetLUFS - currentLUFS
+    let gainLinear = pow(10.0, gainDB / 20.0)
+
+    guard gainLinear.isFinite && gainLinear > 0 else { return audio }
+    return audio * MLXArray(gainLinear)
+}
+
+// MARK: - Silence Trimming
+
+/// Trim leading and trailing silence from audio.
+///
+/// Matches Python's `librosa.effects.trim(wav, top_db=20)` used by both
+/// Regular and Turbo VoiceEncoder before computing speaker embeddings.
+/// Uses vectorized MLX operations (asStrided framing) for fast computation.
+///
+/// - Parameters:
+///   - audio: 1D audio waveform
+///   - topDb: Threshold in dB below peak RMS to consider as silence (default: 20)
+///   - frameLength: Analysis frame length in samples (default: 2048)
+///   - hopLength: Hop between frames (default: 512)
+/// - Returns: Trimmed audio with silence removed from both ends
+private func trimSilence(
+    _ audio: MLXArray,
+    topDb: Float = 20.0,
+    frameLength: Int = 2048,
+    hopLength: Int = 512
+) -> MLXArray {
+    let inputLen = audio.dim(0)
+    let nFrames = max(0, 1 + (inputLen - frameLength) / hopLength)
+    guard nFrames > 0 else { return audio }
+
+    // Frame the audio using strided view (vectorized, no per-sample loop)
+    let floatAudio = audio.reshaped([-1]).asType(.float32)
+    let frames = asStrided(floatAudio, [nFrames, frameLength], strides: [hopLength, 1], offset: 0)
+
+    // Compute per-frame RMS energy in dB (fully vectorized)
+    let rmsEnergy = MLX.sqrt(MLX.mean(frames * frames, axis: 1))  // (nFrames,)
+    let rmsDb = 20.0 * MLX.log10(MLX.maximum(rmsEnergy, MLXArray(Float(1e-10))))
+    eval(rmsDb)
+
+    let maxDb = rmsDb.max().item(Float.self)
+    let threshold = maxDb - topDb
+
+    // Find first and last frames above threshold
+    let aboveThreshold = rmsDb .>= MLXArray(threshold)
+    eval(aboveThreshold)
+    let mask = aboveThreshold.asArray(Bool.self)
+
+    var startFrame = 0
+    var endFrame = nFrames
+    for i in 0 ..< nFrames {
+        if mask[i] { startFrame = i; break }
+    }
+    for i in stride(from: nFrames - 1, through: 0, by: -1) {
+        if mask[i] { endFrame = i + 1; break }
+    }
+
+    let startSample = startFrame * hopLength
+    let endSample = min(endFrame * hopLength + frameLength, inputLen)
+
+    guard endSample > startSample else { return audio }
+    return audio[startSample ..< endSample]
 }
 
 // MARK: - Tokenizer Generation

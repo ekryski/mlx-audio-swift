@@ -57,13 +57,14 @@ func s3genMelSpectrogram(
     let padAmount = (nFft - hopSize) / 2
     input = s3genReflectPad2D(input, padAmount: padAmount)
 
-    // STFT per batch item
+    // STFT per batch item — center=false because we already applied reflect padding above
     let window = hanningWindow(size: winSize)
     var specs: [MLXArray] = []
     for i in 0 ..< B {
         let spec = stft(
             audio: input[i], window: window,
-            nFft: nFft, hopLength: hopSize)
+            nFft: nFft, hopLength: hopSize,
+            center: false)
         specs.append(spec)
     }
     // Stack: each spec is (T', F) -> (B, T', F)
