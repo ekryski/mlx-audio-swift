@@ -614,11 +614,19 @@ class S3GenConditionalDecoder: Module {
 // MARK: - Causal Conditional CFM (Flow Matching)
 
 /// Causal Conditional Flow Matching with Euler ODE solver.
-/// Supports meanflow mode for distilled models (Chatterbox Turbo).
+///
+/// Supports both Regular and Turbo (meanflow) models with different solvers:
+/// - **Turbo (meanflow=true)**: `basicEuler` — no CFG, passes `r` to estimator, linear time schedule
+/// - **Regular (meanflow=false)**: `solveEulerCFG` — classifier-free guidance, cosine time schedule
+///
+/// Matches Python's `CausalConditionalCFM(ConditionalCFM)` exactly.
 class CausalConditionalCFM: Module {
+    static let melChannels = 80
+
     let sigmaMin: Float
     let cfgRate: Float
     let meanflow: Bool
+    let tScheduler: String
 
     @ModuleInfo(key: "estimator") var estimator: S3GenConditionalDecoder
 
@@ -628,10 +636,12 @@ class CausalConditionalCFM: Module {
         nBlocks: Int = 4, numMidBlocks: Int = 12,
         numHeads: Int = 8, attentionHeadDim: Int = 64,
         sigmaMin: Float = 1e-6, cfgRate: Float = 0.7,
+        tScheduler: String = "cosine",
         meanflow: Bool = true
     ) {
         self.sigmaMin = sigmaMin
         self.cfgRate = cfgRate
+        self.tScheduler = tScheduler
         self.meanflow = meanflow
 
         self._estimator.wrappedValue = S3GenConditionalDecoder(
@@ -641,65 +651,80 @@ class CausalConditionalCFM: Module {
             meanflow: meanflow)
     }
 
-    /// Basic Euler integration for meanflow mode (no CFG).
+    /// Basic Euler solver WITHOUT classifier-free guidance.
+    ///
+    /// Used for meanflow/Turbo distilled models. Passes `r` (next timestep) to the
+    /// estimator so the time embedding mixer can combine t and r embeddings.
+    /// Python: `ConditionalCFM._basic_euler`
     private func basicEuler(
         z: MLXArray, tSpan: MLXArray, mu: MLXArray, mask: MLXArray,
         spks: MLXArray?, cond: MLXArray?
     ) -> MLXArray {
         var x = z
         let nSteps = tSpan.dim(0) - 1
-        for i in 0 ..< nSteps {
-            let t = tSpan[i].expandedDimensions(axis: 0)
-            let r = tSpan[i + 1].expandedDimensions(axis: 0)
-            let dt = r - t
 
+        for i in 0 ..< nSteps {
+            let t = tSpan[i ..< (i + 1)]
+            let r = tSpan[(i + 1) ..< (i + 2)]
+
+            // Predict velocity — passes r for meanflow time embedding mixing
             let dxdt = estimator(
                 x: x, mask: mask, mu: mu, t: t,
                 spks: spks, cond: cond, r: r)
 
+            // Euler step
+            let dt = r - t
             x = x + dt * dxdt
         }
         return x
     }
 
-    /// Euler integration with classifier-free guidance.
+    /// Euler solver WITH classifier-free guidance.
+    ///
+    /// Used for Regular (non-meanflow) models. Duplicates the batch for conditional
+    /// and unconditional predictions, then combines with CFG formula.
+    /// Python: `ConditionalCFM._solve_euler_cfg`
     private func solveEulerCFG(
         z: MLXArray, tSpan: MLXArray, mu: MLXArray, mask: MLXArray,
         spks: MLXArray?, cond: MLXArray?
     ) -> MLXArray {
         var x = z
+        let batchSize = mu.dim(0)
         let nSteps = tSpan.dim(0) - 1
 
         for i in 0 ..< nSteps {
-            let t = tSpan[i].expandedDimensions(axis: 0)
-            let dt = tSpan[i + 1] - tSpan[i]
+            let t = tSpan[i ..< (i + 1)]
+            let r = tSpan[(i + 1) ..< (i + 2)]
 
             // Duplicate for classifier-free guidance: [conditional, unconditional]
-            let xDup = MLX.concatenated([x, x], axis: 0)
-            let maskDup = MLX.concatenated([mask, mask], axis: 0)
-            let tDup = MLX.concatenated([t, t], axis: 0)
+            let xIn = MLX.concatenated([x, x], axis: 0)
+            let maskIn = MLX.concatenated([mask, mask], axis: 0)
+            let muIn = MLX.concatenated([mu, MLXArray.zeros(like: mu)], axis: 0)
+            let tIn = MLX.broadcast(t, to: [2 * batchSize])
+            // r is only passed for meanflow; for regular it's nil
+            let rIn: MLXArray? = meanflow ? MLX.broadcast(r, to: [2 * batchSize]) : nil
 
-            // For unconditional: zero out mu, spks, cond
-            let muDup = MLX.concatenated([mu, MLXArray.zeros(like: mu)], axis: 0)
-            let spksDup: MLXArray? = spks.map {
+            let spksIn: MLXArray? = spks.map {
                 MLX.concatenated([$0, MLXArray.zeros(like: $0)], axis: 0)
             }
-            let condDup: MLXArray? = cond.map {
+            let condIn: MLXArray? = cond.map {
                 MLX.concatenated([$0, MLXArray.zeros(like: $0)], axis: 0)
             }
 
-            let predBoth = estimator(
-                x: xDup, mask: maskDup, mu: muDup, t: tDup,
-                spks: spksDup, cond: condDup)
+            // Predict velocity for both conditional and unconditional
+            let dxdt = estimator(
+                x: xIn, mask: maskIn, mu: muIn, t: tIn,
+                spks: spksIn, cond: condIn, r: rIn)
 
             // Split conditional and unconditional predictions
-            let batchSize = x.dim(0)
-            let predCond = predBoth[0 ..< batchSize]
-            let predUncond = predBoth[batchSize...]
+            let dxdtCond = dxdt[0 ..< batchSize]
+            let dxdtUncond = dxdt[batchSize...]
 
             // CFG formula: (1 + cfg_rate) * cond - cfg_rate * uncond
-            let pred = (1 + cfgRate) * predCond - cfgRate * predUncond
+            let pred = (1 + cfgRate) * dxdtCond - cfgRate * dxdtUncond
 
+            // Euler step
+            let dt = r - t
             x = x + dt * pred
         }
         return x
@@ -710,7 +735,7 @@ class CausalConditionalCFM: Module {
         spks: MLXArray? = nil, cond: MLXArray? = nil,
         noisedMels: MLXArray? = nil
     ) -> MLXArray {
-        // Initialize with random noise
+        // Initialize with fresh random noise (matching Python: mx.random.normal(mu.shape))
         var z = MLXRandom.normal(mu.shape)
 
         // If noised_mels provided (for meanflow), splice into generated portion
@@ -722,22 +747,23 @@ class CausalConditionalCFM: Module {
             }
         }
 
-        // Build time span
+        // Time schedule: cosine for Regular, linear for Turbo (meanflow)
+        // Python: `if (not meanflow) and (self.t_scheduler == "cosine"): t_span = 1 - cos(...)`
         let tSpan: MLXArray
-        if meanflow {
-            // Meanflow: uniform time span (no cosine schedule)
-            tSpan = MLX.linspace(Float32(0), Float32(1), count: nTimesteps + 1)
-        } else {
-            // Cosine schedule
-            let linear = MLX.linspace(Float32(0), Float32(1), count: nTimesteps + 1)
+        let linear = MLX.linspace(Float32(0), Float32(1), count: nTimesteps + 1)
+        if !meanflow && tScheduler == "cosine" {
             tSpan = 1.0 - MLX.cos(linear * Float32(Float.pi / 2))
+        } else {
+            tSpan = linear
         }
 
+        // Meanflow (Turbo): basic Euler without CFG, passes r to estimator
+        // Regular: CFG Euler solver with cosine schedule
         if meanflow {
             return basicEuler(z: z, tSpan: tSpan, mu: mu, mask: mask, spks: spks, cond: cond)
-        } else {
-            return solveEulerCFG(z: z, tSpan: tSpan, mu: mu, mask: mask, spks: spks, cond: cond)
         }
+
+        return solveEulerCFG(z: z, tSpan: tSpan, mu: mu, mask: mask, spks: spks, cond: cond)
     }
 }
 
@@ -760,6 +786,7 @@ class CausalMaskedDiffWithXvec: Module {
     @ModuleInfo(key: "encoder_proj") var encoderProj: Linear
     @ModuleInfo(key: "decoder") var decoder: CausalConditionalCFM
     @ModuleInfo(key: "mel2wav") var vocoderModule: HiFTGenerator
+    @ModuleInfo(key: "speaker_encoder") var speakerEncoder: CAMPPlus
 
     init(
         inputSize: Int = 512, outputSize: Int = 80,
@@ -792,6 +819,9 @@ class CausalMaskedDiffWithXvec: Module {
 
         // HiFi-GAN vocoder (weight key: mel2wav)
         self._vocoderModule.wrappedValue = HiFTGenerator()
+
+        // CAMPPlus speaker encoder (x-vector extraction)
+        self._speakerEncoder.wrappedValue = CAMPPlus()
     }
 
     /// Run vocoder (HiFi-GAN) on mel spectrogram to produce waveform.
