@@ -246,12 +246,29 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
         )
         eval(speakerEmb)
 
-        // 2. Prompt speech tokens (empty for now — S3TokenizerV2 not yet implemented)
-        let promptSpeechTokens = MLXArray.zeros([1, 0]).asType(.int32)
+        // 2. Prompt speech tokens — S3TokenizerV2 not yet implemented in Swift.
+        // Fall back to default conditioning's prompt tokens if available.
+        // This gives T3 the speech pattern context needed to generate coherent
+        // tokens with proper EOS, while the speaker embedding captures the ref voice.
+        let promptSpeechTokens: MLXArray
+        if let defaultTokens = defaultConditioning?.condPromptSpeechTokens,
+           defaultTokens.dim(1) > 0 {
+            promptSpeechTokens = defaultTokens
+            print("[Chatterbox]   Using default prompt speech tokens as fallback (\(defaultTokens.shape))")
+        } else {
+            promptSpeechTokens = MLXArray.zeros([1, 0]).asType(.int32)
+        }
 
-        // 3. X-vector for S3Gen — compute from mel spectrogram
-        // Note: speaker_encoder weights are not loaded into module; for now use zeros
-        let xVector = MLXArray.zeros([1, 192])
+        // 3. X-vector for S3Gen — CAMPPlus not yet fully implemented in Swift.
+        // Fall back to default conditioning's x-vector if available.
+        let xVector: MLXArray
+        if let defaultXV = defaultConditioning?.xVector,
+           MLX.abs(defaultXV).max().item(Float.self) > 0.001 {
+            xVector = defaultXV
+            print("[Chatterbox]   Using default x-vector as fallback (\(defaultXV.shape))")
+        } else {
+            xVector = MLXArray.zeros([1, 192])
+        }
 
         // 4. S3Gen prompt features
         let promptFeat = s3genMelSpectrogram(
