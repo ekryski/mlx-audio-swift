@@ -79,7 +79,8 @@ func s3genMelSpectrogram(
         norm: "slaney", melScale: .slaney)
 
     // Apply: (B, T', F) @ (F, M) -> (B, T', M)
-    var melSpec = matmul(magnitudes, filters.transposed())
+    // melFilters returns (nFreqs, nMels) = (F, M) — already correct for matmul
+    var melSpec = matmul(magnitudes, filters)
     melSpec = melSpec.transposed(0, 2, 1) // (B, M, T')
 
     // Log compression

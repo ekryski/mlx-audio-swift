@@ -149,7 +149,9 @@ public func splitAudioIntoChunks(
         let searchLen = searchEnd - searchStart
         if searchLen > minWindowSamples {
             // Only pull the search region to CPU for energy calculation
-            let searchRegion = wav[searchStart..<searchEnd].asArray(Float.self)
+            let searchSlice = wav[searchStart..<searchEnd]
+            eval(searchSlice)
+            let searchRegion = searchSlice.asArray(Float.self)
 
             let energyLen = searchRegion.count - minWindowSamples + 1
             var energy = [Float](repeating: 0, count: energyLen)
@@ -941,7 +943,9 @@ public class Qwen3ASRModel: Module {
         let seqLen = inputsEmbeds.dim(1)
         let hiddenDim = inputsEmbeds.dim(2)
 
-        let numAudioTokens = Int(flatMask.asType(.int32).sum().item(Int32.self))
+        let maskInt = flatMask.asType(.int32)
+        eval(maskInt)
+        let numAudioTokens = Int(maskInt.sum().item(Int32.self))
         guard numAudioTokens > 0 && audioFeatures.dim(0) > 0 else {
             return inputsEmbeds
         }
@@ -951,7 +955,7 @@ public class Qwen3ASRModel: Module {
         let totalLen = flatEmbeds.dim(0)
 
         // Audio tokens are contiguous in the prompt — find start and splice directly
-        let maskValues = flatMask.asType(.int32).asArray(Int32.self)
+        let maskValues = maskInt.asArray(Int32.self)
         var firstAudioPos = -1
         for (i, v) in maskValues.enumerated() {
             if v != 0 { firstAudioPos = i; break }
@@ -1071,7 +1075,9 @@ public class Qwen3ASRModel: Module {
             if temperature > 0 {
                 lastLogits = lastLogits / temperature
             }
-            let nextToken = lastLogits.argMax(axis: -1).item(Int.self)
+            let tokenResult = lastLogits.argMax(axis: -1)
+            eval(tokenResult)
+            let nextToken = tokenResult.item(Int.self)
 
             if eosTokenIds.contains(nextToken) {
                 break
@@ -1234,7 +1240,9 @@ public class Qwen3ASRModel: Module {
                             if temperature > 0 {
                                 lastLogits = lastLogits / temperature
                             }
-                            let nextToken = lastLogits.argMax(axis: -1).item(Int.self)
+                            let tokenResult = lastLogits.argMax(axis: -1)
+                            eval(tokenResult)
+                            let nextToken = tokenResult.item(Int.self)
 
                             if eosTokenIds.contains(nextToken) {
                                 break
