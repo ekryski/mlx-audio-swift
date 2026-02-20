@@ -312,8 +312,11 @@ public class T3GPT2Model: Module {
 
         var generatedIds = [Int]()
 
+        print("[T3-Turbo] Starting generation (maxNewTokens=\(maxNewTokens), temp=\(temperature), topK=\(topK), topP=\(topP))")
+        let genStart = CFAbsoluteTimeGetCurrent()
+
         // Generation loop
-        for _ in 0 ..< maxNewTokens {
+        for step in 0 ..< maxNewTokens {
             var logits = speechLogits.squeezed(axis: 1) // (1, vocab)
 
             // Apply repetition penalty
@@ -329,9 +332,16 @@ public class T3GPT2Model: Module {
 
             // Check EOS
             if nextTokenId == hp.stopSpeechToken {
+                let elapsed = CFAbsoluteTimeGetCurrent() - genStart
+                print("[T3-Turbo] EOS at step \(step)/\(maxNewTokens) (\(generatedIds.count) tokens, \(String(format: "%.2f", elapsed))s)")
                 break
             }
             generatedIds.append(nextTokenId)
+
+            if step % 100 == 0 && step > 0 {
+                let elapsed = CFAbsoluteTimeGetCurrent() - genStart
+                print("[T3-Turbo] Step \(step)/\(maxNewTokens) (\(generatedIds.count) tokens, \(String(format: "%.2f", elapsed))s)")
+            }
 
             // Embed next token for next step
             let nextTokenEmbed = speechEmb(MLXArray([Int32(nextTokenId)]).reshaped([1, 1]))
@@ -342,6 +352,8 @@ public class T3GPT2Model: Module {
             eval(speechLogits)
         }
 
+        let totalElapsed = CFAbsoluteTimeGetCurrent() - genStart
+        print("[T3-Turbo] Generation complete: \(generatedIds.count) tokens in \(String(format: "%.2f", totalElapsed))s")
         return MLXArray(generatedIds.map { Int32($0) }).reshaped([1, -1])
     }
 }

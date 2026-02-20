@@ -314,7 +314,11 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
         let promptFeat: MLXArray
 
         if let refAudio = refAudio {
+            print("[Chatterbox] Processing reference audio (shape: \(refAudio.shape))...")
+            let condStart = CFAbsoluteTimeGetCurrent()
             let (cond, xv, pt, pf, _) = try prepareConditionals(refAudio: refAudio)
+            print("[Chatterbox] Conditioning prepared in \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - condStart))s")
+            print("[Chatterbox]   speakerEmb: \(cond.speakerEmb.shape), promptTokens: \(pt.shape), promptFeat: \(pf.shape), xVector: \(xv.shape)")
             t3Cond = cond
             xVector = xv
             promptTokens = pt
@@ -338,10 +342,28 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
 
         // Tokenize text
         let textTokens = try tokenizeText(text)
+        print("[Chatterbox] Text tokenized: \(textTokens.shape)")
 
         let temperature = generationParameters.temperature
         let topP = generationParameters.topP ?? 0.95
 
+        // Cap max tokens: when using reference audio without prompt speech tokens,
+        // the model may not generate EOS reliably, so use a smaller limit.
+        // ~10 speech tokens per text token is a reasonable heuristic.
+        let hasPromptTokens = t3Cond.condPromptSpeechTokens != nil
+            && (t3Cond.condPromptSpeechTokens?.dim(1) ?? 0) > 0
+        let maxTokens: Int
+        if hasPromptTokens {
+            maxTokens = config.t3Config.maxSpeechTokens
+        } else {
+            // Estimate: ~10 speech tokens per text token, with min 200, max 768
+            let textLen = textTokens.dim(textTokens.ndim - 1)
+            maxTokens = min(768, max(200, textLen * 10))
+            print("[Chatterbox] No prompt speech tokens — capping maxTokens to \(maxTokens) (text length: \(textLen))")
+        }
+
+        print("[Chatterbox] Stage 1: T3 text→speech tokens (maxTokens=\(maxTokens))")
+        let t3Start = CFAbsoluteTimeGetCurrent()
         // Stage 1: T3 — generate speech tokens
         var t3CondMut = t3Cond
         let speechTokens: MLXArray
@@ -351,7 +373,7 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             speechTokens = t3gpt2.inference(
                 t3Cond: &t3CondMut,
                 textTokens: textTokens,
-                maxNewTokens: config.t3Config.maxSpeechTokens,
+                maxNewTokens: maxTokens,
                 temperature: temperature,
                 topK: 1000,
                 topP: topP,
@@ -362,7 +384,7 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             speechTokens = t3llama.inference(
                 t3Cond: &t3CondMut,
                 textTokens: textTokens,
-                maxNewTokens: config.t3Config.maxSpeechTokens,
+                maxNewTokens: maxTokens,
                 temperature: temperature,
                 topP: topP,
                 repetitionPenalty: 1.2,
@@ -372,6 +394,7 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             throw AudioGenerationError.modelNotInitialized("Unknown T3 model type")
         }
         eval(speechTokens)
+        print("[Chatterbox] Stage 1 complete: \(speechTokens.shape) in \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t3Start))s")
 
         // Post-process: remove OOV tokens and append silence
         let cleanTokens = dropInvalidTokens(speechTokens)
@@ -398,6 +421,8 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
         // Run flow matching inference with raw int32 token IDs
         // Meanflow (turbo distilled): 2 steps. Non-meanflow (regular): 10 steps.
         let nTimesteps = config.meanflow ? 2 : 10
+        print("[Chatterbox] Stage 2: S3Gen speech tokens→mel (nTimesteps=\(nTimesteps), tokens=\(tokenArr.shape))")
+        let s3Start = CFAbsoluteTimeGetCurrent()
         let mel = s3gen.inference(
             token: tokenArr,
             tokenLen: tokenLen,
@@ -408,7 +433,10 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             nTimesteps: nTimesteps
         )
         eval(mel)
+        print("[Chatterbox] Stage 2 complete: mel \(mel.shape) in \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - s3Start))s")
 
+        print("[Chatterbox] Stage 3: Vocoder mel→waveform")
+        let vocStart = CFAbsoluteTimeGetCurrent()
         // Vocoder: mel → waveform via HiFi-GAN
         var (waveform, _) = s3gen.vocoder(mel)
 
@@ -432,6 +460,7 @@ public final class ChatterboxModel: Module, SpeechGenerationModel, @unchecked Se
             waveform = MLX.concatenated([fadePart, restPart], axis: -1)
         }
 
+        print("[Chatterbox] Stage 3 complete: waveform \(waveform.shape) in \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - vocStart))s")
         return waveform
     }
 

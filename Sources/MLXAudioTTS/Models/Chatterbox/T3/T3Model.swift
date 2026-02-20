@@ -410,6 +410,9 @@ public class T3Model: Module {
         // Track generated tokens
         var generatedIds = [hp.startSpeechToken]
 
+        print("[T3-LLaMA] Starting generation (maxNewTokens=\(maxNewTokens), temp=\(temperature), topP=\(topP), cfg=\(cfgWeight))")
+        let genStart = CFAbsoluteTimeGetCurrent()
+
         // Generation loop
         for step in 0 ..< maxNewTokens {
             // Get logits for last position
@@ -438,10 +441,17 @@ public class T3Model: Module {
 
             // Check EOS
             if nextTokenId == hp.stopSpeechToken {
+                let elapsed = CFAbsoluteTimeGetCurrent() - genStart
+                print("[T3-LLaMA] EOS at step \(step)/\(maxNewTokens) (\(generatedIds.count) tokens, \(String(format: "%.2f", elapsed))s)")
                 generatedIds.append(nextTokenId)
                 break
             }
             generatedIds.append(nextTokenId)
+
+            if step % 100 == 0 && step > 0 {
+                let elapsed = CFAbsoluteTimeGetCurrent() - genStart
+                print("[T3-LLaMA] Step \(step)/\(maxNewTokens) (\(generatedIds.count) tokens, \(String(format: "%.2f", elapsed))s)")
+            }
 
             // Create embedding for next token with position embedding
             var nextTokenEmbed = speechEmb(MLXArray([Int32(nextTokenId)]).reshaped([1, 1]))
@@ -456,6 +466,8 @@ public class T3Model: Module {
             eval(hidden)
         }
 
+        let totalElapsed = CFAbsoluteTimeGetCurrent() - genStart
+        print("[T3-LLaMA] Generation complete: \(generatedIds.count) tokens in \(String(format: "%.2f", totalElapsed))s")
         return MLXArray(generatedIds.map { Int32($0) }).reshaped([1, -1])
     }
 }

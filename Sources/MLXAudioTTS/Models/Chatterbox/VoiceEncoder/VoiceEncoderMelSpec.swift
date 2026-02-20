@@ -66,7 +66,8 @@ public func voiceEncoderMelSpectrogram(
     )
 
     // Apply: (B, T', F) @ (F, M) → (B, T', M) → transpose → (B, M, T')
-    var mel = matmul(specMagnitudes, filters.transposed())
+    // melFilters returns (nFreqs, nMels) = (F, M) — already correct for matmul
+    var mel = matmul(specMagnitudes, filters)
     mel = mel.transposed(0, 2, 1)
 
     // Convert to dB if needed

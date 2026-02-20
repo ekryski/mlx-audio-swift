@@ -373,14 +373,16 @@ public class Qwen3ForcedAlignerModel: Module {
             let seqLen = inputsEmbeds.dim(1)
             let hiddenDim = inputsEmbeds.dim(2)
 
-            let numAudioTokens = Int(flatMask.asType(.int32).sum().item(Int32.self))
+            let maskInt = flatMask.asType(.int32)
+            eval(maskInt)
+            let numAudioTokens = Int(maskInt.sum().item(Int32.self))
             if numAudioTokens > 0 && audioFeatures.dim(0) > 0 {
                 let numToReplace = min(numAudioTokens, audioFeatures.dim(0))
                 let flatEmbeds = inputsEmbeds.reshaped(-1, hiddenDim)
                 let totalLen = flatEmbeds.dim(0)
 
                 // Audio tokens are contiguous — find start and splice directly
-                let maskValues = flatMask.asType(.int32).asArray(Int32.self)
+                let maskValues = maskInt.asArray(Int32.self)
                 var firstAudioPos = -1
                 for (i, v) in maskValues.enumerated() {
                     if v != 0 { firstAudioPos = i; break }
