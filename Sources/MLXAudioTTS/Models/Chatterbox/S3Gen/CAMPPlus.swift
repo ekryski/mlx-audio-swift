@@ -738,77 +738,75 @@ class CAMPPlus: Module {
             // Drop PyTorch-only BatchNorm tracking state
             if newKey.hasSuffix(".num_batches_tracked") { continue }
 
-            // xvector.block1.tdnnd1... -> blocks.0.layers.0...
-            if let match = newKey.range(of: #"xvector\.block(\d+)\.tdnnd(\d+)\."#, options: .regularExpression) {
-                let matched = String(newKey[match])
-                // Extract block and layer indices
-                let parts = matched.components(separatedBy: ".")
-                if parts.count >= 3,
-                   let blockStr = parts[0].last.map({ String($0) }),
-                   let blockNum = Int(blockStr),
-                   let layerStr = parts[1].replacingOccurrences(of: "tdnnd", with: "").first.map({ String($0) }),
-                   let layerNum = Int(String(parts[1].filter { $0.isNumber }))
-                {
-                    let prefix = "blocks.\(blockNum - 1).layers.\(layerNum - 1)."
-                    newKey = prefix + String(newKey[match.upperBound...])
-                }
+            // --- Turbo model key format: xvector.blockN.tdnndM.* → blocks.(N-1).layers.(M-1).* ---
+
+            // xvector.blockN.tdnndM.suffix → blocks.(N-1).layers.(M-1).suffix
+            // Use named capture groups for reliable number extraction
+            if let regex = try? NSRegularExpression(pattern: #"^xvector\.block(\d+)\.tdnnd(\d+)\."#),
+               let match = regex.firstMatch(in: newKey, range: NSRange(newKey.startIndex..., in: newKey)),
+               let blockRange = Range(match.range(at: 1), in: newKey),
+               let layerRange = Range(match.range(at: 2), in: newKey),
+               let blockNum = Int(newKey[blockRange]),
+               let layerNum = Int(newKey[layerRange])
+            {
+                let matchEnd = newKey.index(newKey.startIndex, offsetBy: match.range.length)
+                let suffix = String(newKey[matchEnd...])
+                newKey = "blocks.\(blockNum - 1).layers.\(layerNum - 1).\(suffix)"
             }
 
-            // xvector.transit1... -> transits.0...
-            if let match = newKey.range(of: #"xvector\.transit(\d+)\."#, options: .regularExpression) {
-                let numStr = String(newKey[match]).filter { $0.isNumber }
-                if let num = Int(numStr) {
-                    let prefix = "transits.\(num - 1)."
-                    newKey = prefix + String(newKey[match.upperBound...])
-                }
+            // xvector.transitN.* → transits.(N-1).*
+            if let regex = try? NSRegularExpression(pattern: #"^xvector\.transit(\d+)\."#),
+               let match = regex.firstMatch(in: newKey, range: NSRange(newKey.startIndex..., in: newKey)),
+               let numRange = Range(match.range(at: 1), in: newKey),
+               let num = Int(newKey[numRange])
+            {
+                let matchEnd = newKey.index(newKey.startIndex, offsetBy: match.range.length)
+                let suffix = String(newKey[matchEnd...])
+                newKey = "transits.\(num - 1).\(suffix)"
             }
 
-            // xvector.tdnn... -> tdnn...
+            // xvector.tdnn.* → tdnn.*
             if newKey.hasPrefix("xvector.tdnn.") {
                 newKey = String(newKey.dropFirst("xvector.".count))
             }
 
-            // xvector.out_nonlinear... -> out_nonlinear...
+            // xvector.out_nonlinear.* → out_nonlinear.*
             if newKey.hasPrefix("xvector.out_nonlinear.") {
                 newKey = String(newKey.dropFirst("xvector.".count))
             }
 
-            // xvector.dense... -> dense...
+            // xvector.dense.* → dense.*
             if newKey.hasPrefix("xvector.dense.") {
                 newKey = String(newKey.dropFirst("xvector.".count))
             }
 
+            // --- Regular model keys: blocks.N.layers.M.* — already correct, no transform needed ---
+
             // head.* stays as head.*
 
-            // nonlinear.batchnorm.* -> nonlinear.0.*
+            // nonlinear.batchnorm.* → nonlinear.0.* (raw PyTorch format)
             newKey = newKey.replacingOccurrences(of: ".nonlinear.batchnorm.", with: ".nonlinear.0.")
-            // For top-level: nonlinear.batchnorm -> nonlinear.0
             if newKey.hasPrefix("out_nonlinear.batchnorm.") {
                 newKey = newKey.replacingOccurrences(of: "out_nonlinear.batchnorm.", with: "out_nonlinear.0.")
             }
 
-            // Conv weight transposition — only when weight shape doesn't match model expectation.
-            // MLX-community models have Conv1d weights pre-transposed but Conv2d weights NOT transposed.
+            // Conv weight transposition — ONLY when model reference shape exists and differs.
+            // MLX-community models ship with weights already in MLX format.
+            // Raw PyTorch models need transposition (shapes will differ from model expectation).
+            // If no model reference is found, assume MLX format (do NOT transpose).
             if newKey.hasSuffix(".weight") && (value.ndim == 4 || value.ndim == 3) {
                 if let expectedWeight = flatParams[newKey] {
-                    // Only transpose if shapes don't match (weight is in PyTorch format)
                     if value.shape != expectedWeight.shape {
                         if value.ndim == 4 {
-                            // Conv2d: PyTorch (O,I,H,W) -> MLX (O,H,W,I)
+                            // Conv2d: PyTorch (O,I,H,W) → MLX (O,H,W,I)
                             value = value.transposed(0, 2, 3, 1)
                         } else if value.ndim == 3 {
-                            // Conv1d: PyTorch (O,I,K) -> MLX (O,K,I)
+                            // Conv1d: PyTorch (O,I,K) → MLX (O,K,I)
                             value = value.swappedAxes(1, 2)
                         }
                     }
-                } else {
-                    // No model reference found — transpose unconditionally (PyTorch assumption)
-                    if value.ndim == 4 {
-                        value = value.transposed(0, 2, 3, 1)
-                    } else if value.ndim == 3 {
-                        value = value.swappedAxes(1, 2)
-                    }
                 }
+                // If no model reference found, leave weight as-is (assume MLX format)
             }
 
             sanitized[newKey] = value

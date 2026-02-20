@@ -280,28 +280,37 @@ class S3GenGELU: Module {
 
 // MARK: - FeedForward
 
+/// Container module matching Python's `nn.ModuleList([GELU(...), nn.Linear(...)])`.
+/// Maps weight keys `net.0.proj.{weight,bias}` → S3GenGELU and `net.1.{weight,bias}` → Linear.
+/// Uses explicit named submodules (keyed as "0" and "1") instead of `[Module]` array
+/// to avoid `mismatchedContainers` errors when loading quantized weights.
+class S3GenFeedForwardNet: Module {
+    @ModuleInfo(key: "0") var geluLayer: S3GenGELU
+    @ModuleInfo(key: "1") var outProj: Linear
+
+    init(dimIn: Int, dimOut: Int) {
+        self._geluLayer.wrappedValue = S3GenGELU(dimIn: dimIn, dimOut: dimOut)
+        self._outProj.wrappedValue = Linear(dimOut, dimIn)
+    }
+
+    func callAsFunction(_ x: MLXArray) -> MLXArray {
+        return outProj(geluLayer(x))
+    }
+}
+
 /// Feed-forward network with GELU activation.
 /// Python: `FeedForward` with `net` list: `net.0` = GELU, `net.1` = Linear.
 /// Weight keys: `net.0.proj.{weight,bias}`, `net.1.{weight,bias}`
 class S3GenFeedForward: Module {
-    /// Python stores as `nn.ModuleList([GELU(...), nn.Linear(...)])`.
-    /// Index 0 = S3GenGELU, Index 1 = Linear.
-    @ModuleInfo(key: "net") var net: [Module]
+    @ModuleInfo(key: "net") var net: S3GenFeedForwardNet
 
     init(dim: Int, mult: Int = 4) {
         let innerDim = dim * mult
-        self._net.wrappedValue = [
-            S3GenGELU(dimIn: dim, dimOut: innerDim),
-            Linear(innerDim, dim),
-        ]
+        self._net.wrappedValue = S3GenFeedForwardNet(dimIn: dim, dimOut: innerDim)
     }
 
     func callAsFunction(_ x: MLXArray) -> MLXArray {
-        let geluLayer = net[0] as! S3GenGELU
-        let outProj = net[1] as! Linear
-        var out = geluLayer(x)
-        out = outProj(out)
-        return out
+        return net(x)
     }
 }
 

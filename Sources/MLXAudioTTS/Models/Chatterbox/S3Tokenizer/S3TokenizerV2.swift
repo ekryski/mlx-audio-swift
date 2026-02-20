@@ -386,10 +386,8 @@ public class S3TokenizerV2: Module {
                         if value.shape != expectedWeight.shape {
                             value = value.swappedAxes(1, 2)
                         }
-                    } else {
-                        // No model reference found — transpose unconditionally (PyTorch assumption)
-                        value = value.swappedAxes(1, 2)
                     }
+                    // If no model reference found, leave weight as-is (assume MLX format)
                 }
             }
 
