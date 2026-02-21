@@ -748,6 +748,7 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
         // Sanitize and load talker weights
         let talkerWeights = Qwen3TTSTalkerForConditionalGeneration.sanitize(weights: allWeights)
         let talkerPairs = talkerWeights.map { ($0.key, $0.value) }
+<<<<<<< HEAD
 
         // Quantized checkpoints store packed weights and companion .scales tensors.
         // Convert talker Linear layers before loading those tensors.
@@ -767,6 +768,9 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
         }
 
         try model.talker.update(parameters: ModuleParameters.unflattened(talkerPairs), verify: .all)
+=======
+        try model.talker.update(parameters: ModuleParameters.unflattened(talkerPairs), verify: .noUnusedKeys)
+>>>>>>> ae8a237 (fix Qwen3-TTS quantized model loading — use noUnusedKeys verification)
         eval(model.talker.parameters())
 
         // Generate tokenizer.json if missing (Qwen3-TTS ships without it)
@@ -823,7 +827,7 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
             if !speakerWeights.isEmpty {
                 if let speakerEncoder = model.speakerEncoder {
                     let speakerPairs = speakerWeights.map { ($0.key, $0.value) }
-                    try speakerEncoder.update(parameters: ModuleParameters.unflattened(speakerPairs), verify: .all)
+                    try speakerEncoder.update(parameters: ModuleParameters.unflattened(speakerPairs), verify: .noUnusedKeys)
                     eval(speakerEncoder.parameters())
                 }
             }
@@ -863,7 +867,7 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
         if !tokenizerWeights.isEmpty {
             let sanitized = Qwen3TTSSpeechTokenizer.sanitize(weights: tokenizerWeights)
             let pairs = sanitized.map { ($0.key, $0.value) }
-            try speechTokenizer.update(parameters: ModuleParameters.unflattened(pairs), verify: .all)
+            try speechTokenizer.update(parameters: ModuleParameters.unflattened(pairs), verify: .noUnusedKeys)
             eval(speechTokenizer.parameters())
         }
 
