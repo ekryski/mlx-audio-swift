@@ -216,7 +216,7 @@ private class T3TransformerBlock: Module {
 /// This corresponds to LLaMA's model.layers + norm, accepting pre-computed embeddings.
 class T3LlamaInner: Module {
     /// Placeholder embedding — T3 doesn't use it (it builds embeddings externally).
-    /// Needed so weight keys like `tfmr.model.embed_tokens.weight` load without error.
+    /// Needed so weight key `tfmr.embed_tokens.weight` loads without error.
     @ModuleInfo(key: "embed_tokens") var embedTokens: Embedding
 
     fileprivate let layers: [T3TransformerBlock]
@@ -253,7 +253,7 @@ public class T3Model: Module {
     let llamaConfig: LlamaBackboneConfig
     let dim: Int
 
-    // LLaMA backbone — weight key prefix: "tfmr.model.*"
+    // LLaMA backbone — weight keys: "tfmr.layers.*", "tfmr.embed_tokens.*", "tfmr.norm.*"
     @ModuleInfo(key: "tfmr") var tfmr: T3LlamaInner
 
     // Conditioning encoder
@@ -313,33 +313,39 @@ public class T3Model: Module {
 
     // MARK: - Weight Sanitization
 
-    /// Sanitize PyTorch weights for MLX.
+    /// Sanitize weights for MLX.
     ///
     /// Handles:
-    /// - `tfmr.layers.X` → `tfmr.model.layers.X` mapping
-    /// - Conv1d weight transposition in conditioning encoder
+    /// - `tfmr.model.layers.X` → `tfmr.layers.X` (strip intermediate `model.`)
+    ///
+    /// The HuggingFace MLX weights use the Python LLaMA structure:
+    ///   Model (outer, at `tfmr`) → LlamaModel (inner, at `tfmr.model`)
+    ///
+    /// Our Swift T3LlamaInner sits directly at `tfmr` with `layers`, `embed_tokens`,
+    /// `norm` as direct children — no intermediate `model` level. So we strip `model.`
+    /// from `tfmr.model.*` keys to match the flat Swift structure.
+    ///
+    /// Also handles raw PyTorch keys (`tfmr.layers.*` without `model.`) which pass
+    /// through unchanged since they already match our structure.
     public func sanitize(weights: [String: MLXArray]) -> [String: MLXArray] {
         var newWeights = [String: MLXArray]()
 
         for (key, value) in weights {
             var newKey = key
-            var newValue = value
 
-            // Transformer weight name mapping:
-            // PyTorch uses: tfmr.layers.X, tfmr.embed_tokens, tfmr.norm
-            // Our T3LlamaInner uses: tfmr.model.layers.X, tfmr.model.embed_tokens, tfmr.model.norm
-            // So: tfmr.X → tfmr.model.X for internal components
-            if key.hasPrefix("tfmr.") && !key.hasPrefix("tfmr.model.") {
-                let internalPrefixes = ["tfmr.layers.", "tfmr.embed_tokens.", "tfmr.norm."]
-                for prefix in internalPrefixes {
-                    if key.hasPrefix(prefix) {
-                        newKey = key.replacingOccurrences(of: "tfmr.", with: "tfmr.model.", options: [], range: key.startIndex ..< key.index(key.startIndex, offsetBy: 5))
-                        break
-                    }
-                }
+            // Strip the intermediate `model.` from `tfmr.model.*` keys.
+            // Python has: Model (at tfmr) → LlamaModel (at tfmr.model)
+            // Swift has: T3LlamaInner (at tfmr) → layers/embed_tokens/norm directly
+            if key.hasPrefix("tfmr.model.") {
+                newKey = "tfmr." + key.dropFirst("tfmr.model.".count)
             }
 
-            newWeights[newKey] = newValue
+            // Drop lm_head weights (Python's Model wrapper has one, we don't use it)
+            if newKey.hasPrefix("tfmr.lm_head.") {
+                continue
+            }
+
+            newWeights[newKey] = value
         }
 
         return newWeights
@@ -406,6 +412,7 @@ public class T3Model: Module {
 
         // Initial forward pass to fill cache
         var hidden = tfmr(inputEmbeddings, cache: cache)
+        eval(hidden)
 
         // Track generated tokens
         var generatedIds = [hp.startSpeechToken]
