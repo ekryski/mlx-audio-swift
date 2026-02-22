@@ -840,7 +840,8 @@ struct STTSmokeTests {
         defer { testCleanup("parakeetV2Transcribe") }
 
         let audioURL = Bundle.module.url(forResource: "intention", withExtension: "wav", subdirectory: "media")!
-        let (sampleRate, audioData) = try loadAudioArray(from: audioURL)
+        // Resample to 16kHz — Parakeet expects 16kHz mono input
+        let (sampleRate, audioData) = try loadAudioArray(from: audioURL, sampleRate: 16000)
         print("\u{001B}[33mLoaded audio: \(audioData.shape), sample rate: \(sampleRate)\u{001B}[0m")
 
         print("\u{001B}[33mLoading Parakeet V2 TDT model...\u{001B}[0m")
@@ -857,14 +858,14 @@ struct STTSmokeTests {
         print("\u{001B}[36mWord count: \(wordCount)\u{001B}[0m")
         #expect(wordCount > 0, "Should transcribe at least one word")
 
-        // The intention.wav file contains the spoken word "intention".
-        // Note: The test audio is 24kHz but Parakeet expects 16kHz — sample rate mismatch
-        // may affect short-utterance accuracy. Longer audio (conversational) transcribes well.
+        // The intention.wav file contains the spoken word "intention"
         let lowercased = output.text.lowercased()
         if lowercased.contains("intention") {
             print("\u{001B}[32m✓ Correctly transcribed 'intention'\u{001B}[0m")
         } else {
-            print("\u{001B}[33m⚠ Expected 'intention' but got: \"\(output.text)\" — may need 16kHz audio\u{001B}[0m")
+            // Short utterances (~1.5s) can be challenging for ASR models.
+            // The conversational test validates longer audio works accurately.
+            print("\u{001B}[33m⚠ Expected 'intention' but got: \"\(output.text)\" — short utterance accuracy varies\u{001B}[0m")
         }
     }
 
@@ -873,7 +874,8 @@ struct STTSmokeTests {
         defer { testCleanup("parakeetV2TranscribeStream") }
 
         let audioURL = Bundle.module.url(forResource: "intention", withExtension: "wav", subdirectory: "media")!
-        let (sampleRate, audioData) = try loadAudioArray(from: audioURL)
+        // Resample to 16kHz — Parakeet expects 16kHz mono input
+        let (sampleRate, audioData) = try loadAudioArray(from: audioURL, sampleRate: 16000)
         print("\u{001B}[33mLoaded audio: \(audioData.shape), sample rate: \(sampleRate)\u{001B}[0m")
 
         print("\u{001B}[33mLoading Parakeet V2 TDT model...\u{001B}[0m")
@@ -915,7 +917,8 @@ struct STTSmokeTests {
         defer { testCleanup("parakeetV2TranscribeConversational") }
 
         let audioURL = Bundle.module.url(forResource: "conversational_a", withExtension: "wav", subdirectory: "media")!
-        let (sampleRate, audioData) = try loadAudioArray(from: audioURL)
+        // Resample to 16kHz — Parakeet expects 16kHz mono input
+        let (sampleRate, audioData) = try loadAudioArray(from: audioURL, sampleRate: 16000)
         let audioDuration = Double(audioData.shape[0]) / Double(sampleRate)
         print("\u{001B}[33mLoaded audio: \(audioData.shape), sample rate: \(sampleRate), duration: \(String(format: "%.1f", audioDuration))s\u{001B}[0m")
 
