@@ -106,6 +106,8 @@ let package = Package(
                 "Models/Llama/README.md",
                 "Models/Qwen3/README.md",
                 "Models/Marvis/README.md",
+                "Models/Kokoro/README.md",
+                "Models/Chatterbox/README.md",
             ]
         ),
 
