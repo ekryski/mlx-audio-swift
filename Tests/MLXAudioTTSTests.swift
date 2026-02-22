@@ -117,3 +117,70 @@ struct KokoroConfigTests {
         #expect(config.istftNet.upsampleRates == [10, 6])
     }
 }
+
+
+// MARK: - TextProcessor Unit Tests
+
+/// Mock G2P processor that returns a fixed IPA string for testing.
+struct MockG2PProcessor: TextProcessor {
+    let fixedOutput: String
+
+    func process(text: String, language: String?) throws -> String {
+        return fixedOutput
+    }
+}
+
+/// Mock G2P processor that verifies it receives the expected input.
+struct CapturingG2PProcessor: TextProcessor {
+    let expectedInput: String
+    let output: String
+
+    func process(text: String, language: String?) throws -> String {
+        // Verify the processor receives the original plain text
+        assert(text == expectedInput, "Expected '\(expectedInput)' but got '\(text)'")
+        return output
+    }
+}
+
+struct TextProcessorProtocolTests {
+
+    @Test func testTextProcessorProtocolConformance() {
+        // Verify a basic implementation works
+        let processor = MockG2PProcessor(fixedOutput: "hɛloʊ wˈɜɹld")
+        let result = try! processor.process(text: "Hello world", language: nil)
+        #expect(result == "hɛloʊ wˈɜɹld", "Mock processor should return fixed output")
+    }
+
+    @Test func testTextProcessorWithLanguage() {
+        // Verify language parameter is passed through
+        struct LanguageAwareProcessor: TextProcessor {
+            func process(text: String, language: String?) throws -> String {
+                if language == "en-gb" {
+                    return "brɪtɪʃ"
+                }
+                return "əmɛɹɪkən"
+            }
+        }
+
+        let processor = LanguageAwareProcessor()
+        let usResult = try! processor.process(text: "test", language: "en-us")
+        let gbResult = try! processor.process(text: "test", language: "en-gb")
+        #expect(usResult == "əmɛɹɪkən")
+        #expect(gbResult == "brɪtɪʃ")
+    }
+
+    @Test func testTextProcessorThrowsError() {
+        struct FailingProcessor: TextProcessor {
+            func process(text: String, language: String?) throws -> String {
+                throw NSError(domain: "G2PError", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Unsupported language"
+                ])
+            }
+        }
+
+        let processor = FailingProcessor()
+        #expect(throws: (any Error).self) {
+            try processor.process(text: "test", language: "unsupported")
+        }
+    }
+}

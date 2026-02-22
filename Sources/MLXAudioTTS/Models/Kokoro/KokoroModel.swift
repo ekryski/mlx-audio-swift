@@ -13,10 +13,20 @@ import MLXNN
 /// 3. Prosody prediction (F0 pitch and voicing)
 /// 4. iSTFT HiFi-GAN decoder for waveform synthesis
 ///
-/// Usage:
+/// By default, Kokoro expects pre-phonemized IPA text. To use plain text input,
+/// provide a ``TextProcessor`` implementation (e.g., MisakiSwift for English G2P):
+///
 /// ```swift
+/// // With pre-phonemized text (default)
 /// let model = try await KokoroModel.fromPretrained("mlx-community/Kokoro-82M-bf16")
-/// let audio = try await model.generate(text: phonemizedText, voice: "af_heart")
+/// let audio = try await model.generate(text: "hɛloʊ wˈɜɹld", voice: "af_heart")
+///
+/// // With a TextProcessor for plain text
+/// let model = try await KokoroModel.fromPretrained(
+///     "mlx-community/Kokoro-82M-bf16",
+///     textProcessor: myG2PProcessor
+/// )
+/// let audio = try await model.generate(text: "Hello world", voice: "af_heart")
 /// ```
 public final class KokoroModel: SpeechGenerationModel, @unchecked Sendable {
 
@@ -49,12 +59,20 @@ public final class KokoroModel: SpeechGenerationModel, @unchecked Sendable {
     /// Directory containing the downloaded model (for loading voices).
     private let modelDirectory: URL?
 
+    /// Optional text processor for converting plain text to phonemes.
+    /// When nil, input text is expected to be pre-phonemized IPA.
+    private var textProcessor: TextProcessor?
+
     /// Cached voice embeddings.
     private var voiceCache: [String: MLXArray] = [:]
 
-    init(config: KokoroConfig, weights: [String: MLXArray], modelDirectory: URL? = nil) {
+    init(
+        config: KokoroConfig, weights: [String: MLXArray],
+        modelDirectory: URL? = nil, textProcessor: TextProcessor? = nil
+    ) {
         self.config = config
         self.modelDirectory = modelDirectory
+        self.textProcessor = textProcessor
 
         let albertArgs = KokoroAlbertArgs(
             numHiddenLayers: config.plbert.numHiddenLayers,
@@ -122,9 +140,16 @@ public final class KokoroModel: SpeechGenerationModel, @unchecked Sendable {
             voiceEmbedding = try loadVoice(named: voiceName)
         }
 
-        // Text is expected to be pre-phonemized for now.
-        // G2P integration will be added in a follow-up.
-        return try synthesize(phonemizedText: text, voice: voiceEmbedding)
+        // If a text processor is set, convert plain text to phonemes first.
+        // Otherwise, assume the input is already phonemized IPA.
+        let phonemizedText: String
+        if let textProcessor {
+            phonemizedText = try textProcessor.process(text: text, language: language)
+        } else {
+            phonemizedText = text
+        }
+
+        return try synthesize(phonemizedText: phonemizedText, voice: voiceEmbedding)
     }
 
     public func generateStream(
@@ -252,6 +277,16 @@ public final class KokoroModel: SpeechGenerationModel, @unchecked Sendable {
             .sorted()
     }
 
+    // MARK: - Text Processor
+
+    /// Set or replace the text processor used to convert plain text to phonemes.
+    ///
+    /// When a text processor is set, `generate(text:)` will run the processor
+    /// before synthesis. When nil, input text is expected to be pre-phonemized IPA.
+    public func setTextProcessor(_ processor: TextProcessor?) {
+        self.textProcessor = processor
+    }
+
     // MARK: - Alignment
 
     private func createAlignmentTarget(durations: MLXArray, batchSize: Int) -> MLXArray {
@@ -325,8 +360,15 @@ public final class KokoroModel: SpeechGenerationModel, @unchecked Sendable {
     // MARK: - Factory
 
     /// Load a pretrained Kokoro model from HuggingFace Hub.
+    ///
+    /// - Parameters:
+    ///   - modelRepo: HuggingFace repository ID (e.g., "mlx-community/Kokoro-82M-bf16").
+    ///   - textProcessor: Optional text processor for converting plain text to phonemes.
+    ///     When nil, input text is expected to be pre-phonemized IPA.
+    ///   - cache: HuggingFace Hub cache configuration.
     public static func fromPretrained(
         _ modelRepo: String,
+        textProcessor: TextProcessor? = nil,
         cache: HubCache = .default
     ) async throws -> KokoroModel {
         let hfToken: String? = ProcessInfo.processInfo.environment["HF_TOKEN"]
@@ -366,6 +408,9 @@ public final class KokoroModel: SpeechGenerationModel, @unchecked Sendable {
         let rawWeights = try MLX.loadArrays(url: weightsURL)
         let weights = sanitizeWeights(rawWeights)
 
-        return KokoroModel(config: config, weights: weights, modelDirectory: modelDir)
+        return KokoroModel(
+            config: config, weights: weights,
+            modelDirectory: modelDir, textProcessor: textProcessor
+        )
     }
 }
