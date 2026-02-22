@@ -198,6 +198,67 @@ let audio = try await model.generate(
 - **Xcode 15+**
 - **Swift 5.9+**
 
+## Testing
+
+### Unit Tests
+
+Fast unit tests that don't download models:
+
+```bash
+swift test
+```
+
+### Smoke Tests
+
+End-to-end inference tests that download models from HuggingFace and run generation. These are slower and require network access + sufficient disk/memory.
+
+**Run all smoke tests:**
+
+```bash
+xcodebuild test \
+  -scheme MLXAudio-Package \
+  -destination 'platform=macOS' \
+  -only-testing:MLXAudioTests/SmokeTests
+```
+
+**Run a single category** (Codecs, TTS, STT, VAD, or STS):
+
+```bash
+xcodebuild test \
+  -scheme MLXAudio-Package \
+  -destination 'platform=macOS' \
+  -only-testing:'MLXAudioTests/SmokeTests/TTSSmokeTests'
+```
+
+Available categories: `CodecsSmokeTests`, `TTSSmokeTests`, `STTSmokeTests`, `VADSmokeTests`, `STSSmokeTests`
+
+**Run a specific model test:**
+
+```bash
+xcodebuild test \
+  -scheme MLXAudio-Package \
+  -destination 'platform=macOS' \
+  -only-testing:'MLXAudioTests/SmokeTests/TTSSmokeTests/chatterboxTurboGenerate()'
+```
+
+Note the trailing `()` — this is required by Swift Testing.
+
+You can combine multiple `-only-testing` flags to run a subset of tests:
+
+```bash
+xcodebuild test \
+  -scheme MLXAudio-Package \
+  -destination 'platform=macOS' \
+  -only-testing:'MLXAudioTests/SmokeTests/TTSSmokeTests/chatterboxTurboGenerate()' \
+  -only-testing:'MLXAudioTests/SmokeTests/TTSSmokeTests/chatterboxTurboGenerateStream()'
+```
+
+**Filter verbose xcodebuild output** to just test progress:
+
+```bash
+2>&1 | grep -E '(Test .* (started|passed|failed)|Suite .* (started|passed|failed)|TEST (PASSED|FAILED))'
+```
+
 ## Examples
 
 Check out the [Examples/VoicesApp](Examples/VoicesApp) directory for a complete SwiftUI application demonstrating:
