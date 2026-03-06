@@ -32,6 +32,7 @@ public final class KokoroModel: SpeechGenerationModel, @unchecked Sendable {
 
     public enum KokoroError: Error {
         case tooManyTokens
+        case emptyInput
         case configNotFound
         case weightsNotFound
         case voiceNotFound(String)
@@ -136,13 +137,9 @@ public final class KokoroModel: SpeechGenerationModel, @unchecked Sendable {
         refText: String?, language: String?,
         generationParameters: GenerateParameters
     ) async throws -> MLXArray {
-        let voiceEmbedding: MLXArray
-        if let refAudio {
-            voiceEmbedding = refAudio
-        } else {
-            let voiceName = voice ?? "af_heart"
-            voiceEmbedding = try loadVoice(named: voiceName)
-        }
+        // Kokoro does not support voice cloning from reference audio; always use a named voice.
+        let voiceName = voice ?? "af_heart"
+        let voiceEmbedding = try loadVoice(named: voiceName)
 
         // If a text processor is set, convert plain text to phonemes first.
         // Otherwise, assume the input is already phonemized IPA.
@@ -192,6 +189,9 @@ public final class KokoroModel: SpeechGenerationModel, @unchecked Sendable {
         let inputIds = KokoroTokenizer.tokenize(phonemizedText: phonemizedText, vocab: config.vocab)
         guard inputIds.count <= Self.maxTokenCount else {
             throw KokoroError.tooManyTokens
+        }
+        guard !inputIds.isEmpty else {
+            throw KokoroError.emptyInput
         }
 
         // Step 2: Prepare input tensors (pad with 0 tokens)
