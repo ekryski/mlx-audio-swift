@@ -2,6 +2,7 @@ import AVFoundation
 import Foundation
 @preconcurrency import MLX
 import MLXAudioCore
+import MLXAudioSTT
 import MLXAudioTTS
 import MLXLMCommon
 
@@ -31,6 +32,8 @@ enum AppError: Error, LocalizedError, CustomStringConvertible {
 
 @main
 enum App {
+    private static let forcedAlignerRepo = "mlx-community/Qwen3-ForcedAligner-0.6B-4bit"
+
     static func main() async {
         do {
             let args = try CLI.parse()
@@ -43,7 +46,9 @@ enum App {
                 refText: args.refText,
                 maxTokens: args.maxTokens,
                 temperature: args.temperature,
-                topP: args.topP
+                topP: args.topP,
+                timestamps: args.timestamps,
+                benchmark: args.benchmark
             )
         } catch {
             fputs("Error: \(error)\n", stderr)
@@ -62,9 +67,11 @@ enum App {
         maxTokens: Int?,
         temperature: Float?,
         topP: Float?,
+        timestamps: Bool,
+        benchmark: Bool,
         hfToken: String? = nil
     ) async throws {
-        Memory.cacheLimit = 100 * 1024 * 1024
+        Memory.cacheLimit = 256 * 1024 * 1024
 
         print("Loading model (\(model))")
 
@@ -105,25 +112,128 @@ enum App {
             generationParameters.topP = topP
         }
 
-        let audioData = try await loadedModel.generate(
-            text: text,
-            voice: voice,
-            refAudio: refAudio,
-            refText: refText,
-            language: nil,
-            generationParameters: generationParameters
-        ).asArray(Float.self)
+        let audioData: [Float]
+        var benchmarkMetrics: BenchmarkMetrics?
+        if benchmark {
+            let sampleRate = Double(loadedModel.sampleRate)
+            let stream = loadedModel.generateStream(
+                text: text,
+                voice: voice,
+                refAudio: refAudio,
+                refText: refText,
+                language: nil,
+                generationParameters: generationParameters,
+                streamingInterval: 0.32
+            )
+
+            var collectedAudio = [Float]()
+            var totalSamples = 0
+            var firstChunkLatency: TimeInterval?
+            var generationInfo: AudioGenerationInfo?
+
+            for try await event in stream {
+                switch event {
+                case .token:
+                    break
+                case .info(let info):
+                    generationInfo = info
+                case .audio(let chunk):
+                    let chunkSamples = chunk.asArray(Float.self)
+                    guard !chunkSamples.isEmpty else { continue }
+
+                    let now = CFAbsoluteTimeGetCurrent()
+                    let chunkLatency = now - started
+                    if firstChunkLatency == nil {
+                        firstChunkLatency = chunkLatency
+                    }
+
+                    collectedAudio.append(contentsOf: chunkSamples)
+                    totalSamples += chunkSamples.count
+                }
+            }
+
+            audioData = collectedAudio
+            let elapsed = CFAbsoluteTimeGetCurrent() - started
+            let audioDuration = sampleRate > 0 ? Double(totalSamples) / sampleRate : 0
+            benchmarkMetrics = BenchmarkMetrics(
+                elapsed: elapsed,
+                audioDuration: audioDuration,
+                firstChunkLatency: firstChunkLatency,
+                sampleRate: sampleRate,
+                generationInfo: generationInfo
+            )
+        } else {
+            audioData = try await loadedModel.generate(
+                text: text,
+                voice: voice,
+                refAudio: refAudio,
+                refText: refText,
+                language: nil,
+                generationParameters: generationParameters
+            ).asArray(Float.self)
+        }
+
+        print(String(format: "Finished generation in %0.2fs", CFAbsoluteTimeGetCurrent() - started))
 
         let outputURL = makeOutputURL(outputPath: outputPath)
         let sampleRate = Double(loadedModel.sampleRate)
         try writeWavFile(samples: audioData, sampleRate: sampleRate, outputURL: outputURL)
         print("Wrote WAV to \(outputURL.path)")
 
-        print(String(format: "Finished generation in %0.2fs", CFAbsoluteTimeGetCurrent() - started))
+        if let benchmarkMetrics {
+            print("Benchmark:")
+            print(String(format: "  Audio duration: %.2fs", benchmarkMetrics.audioDuration))
+            if let firstChunkLatency = benchmarkMetrics.firstChunkLatency {
+                print(String(format: "  TTFB: %.3fs", firstChunkLatency))
+            } else {
+                print("  TTFB: n/a")
+            }
+            if benchmarkMetrics.audioDuration > 0 {
+                let rtf = benchmarkMetrics.audioDuration / benchmarkMetrics.elapsed
+                print(String(format: "  RTFx: %.3f", rtf))
+            } else {
+                print("  RTFx: n/a")
+            }
+            if let info = benchmarkMetrics.generationInfo {
+                print(String(format: "  Tokens/s: %.2f", info.tokensPerSecond))
+            }
+        }
+
+        if timestamps {
+            print("Loading forced aligner (\(forcedAlignerRepo))")
+            let forcedAligner = try await Qwen3ForcedAlignerModel.fromPretrained(forcedAlignerRepo)
+            let alignmentAudio = try resampleAudio(
+                MLXArray(audioData),
+                from: Int(loadedModel.sampleRate),
+                to: 16000
+            )
+            let aligned = forcedAligner.generate(audio: alignmentAudio, text: text, language: "English")
+
+            print("Timestamps:")
+            for item in aligned.items {
+                print(
+                    String(
+                        format: "  [%.3fs - %.3fs] %@",
+                        item.startTime,
+                        item.endTime,
+                        item.text
+                    )
+                )
+            }
+        }
+
         print("Memory usage:\n\(Memory.snapshot())")
 
         let elapsed = CFAbsoluteTimeGetCurrent() - started
         print(String(format: "Done. Elapsed: %.2fs", elapsed))
+    }
+
+    private struct BenchmarkMetrics {
+        let elapsed: TimeInterval
+        let audioDuration: TimeInterval
+        let firstChunkLatency: TimeInterval?
+        let sampleRate: Double
+        let generationInfo: AudioGenerationInfo?
     }
 
     private static func makeOutputURL(outputPath: String?) -> URL {
@@ -159,6 +269,7 @@ enum App {
         let audioFile = try AVAudioFile(forWriting: outputURL, settings: format.settings)
         try audioFile.write(from: buffer)
     }
+
 }
 
 // MARK: -
@@ -187,6 +298,8 @@ struct CLI {
     let maxTokens: Int?
     let temperature: Float?
     let topP: Float?
+    let timestamps: Bool
+    let benchmark: Bool
 
     static func parse() throws -> CLI {
         var text: String?
@@ -198,6 +311,8 @@ struct CLI {
         var maxTokens: Int? = nil
         var temperature: Float? = nil
         var topP: Float? = nil
+        var timestamps = false
+        var benchmark = false
 
         var it = CommandLine.arguments.dropFirst().makeIterator()
         while let arg = it.next() {
@@ -232,6 +347,10 @@ struct CLI {
                 guard let v = it.next() else { throw CLIError.missingValue(arg) }
                 guard let value = Float(v) else { throw CLIError.invalidValue(arg, v) }
                 topP = value
+            case "--timestamps":
+                timestamps = true
+            case "--benchmark":
+                benchmark = true
             case "--help", "-h":
                 printUsage()
                 exit(0)
@@ -257,7 +376,9 @@ struct CLI {
             refText: refText,
             maxTokens: maxTokens,
             temperature: temperature,
-            topP: topP
+            topP: topP,
+            timestamps: timestamps,
+            benchmark: benchmark
         )
     }
 
@@ -265,7 +386,7 @@ struct CLI {
         let exe = (CommandLine.arguments.first as NSString?)?.lastPathComponent ?? "marvis-tts-cli"
         print("""
         Usage:
-          \(exe) --text "Hello world" [--voice conversational_b] [--model <hf-repo>] [--output <path>] [--ref_audio <path>] [--ref_text <string>] [--max_tokens <int>] [--temperature <float>] [--top_p <float>]
+          \(exe) --text "Hello world" [--voice conversational_b] [--model <hf-repo>] [--output <path>] [--ref_audio <path>] [--ref_text <string>] [--max_tokens <int>] [--temperature <float>] [--top_p <float>] [--timestamps] [--benchmark]
 
         Options:
           -t, --text <string>           Text to synthesize (required if not passed as trailing arg)
@@ -277,6 +398,8 @@ struct CLI {
               --max_tokens <int>       Maximum number of tokens to generate (overrides model default)
               --temperature <float>    Sampling temperature (overrides model default)
               --top_p <float>          Top-p sampling (overrides model default)
+              --timestamps             Emit word timestamps using mlx-community/Qwen3-ForcedAligner-0.6B-4bit
+              --benchmark              Run streaming benchmark and log TTFB/RTF metrics
           -h, --help                    Show this help
         """)
     }
