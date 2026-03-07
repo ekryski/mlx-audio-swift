@@ -97,7 +97,15 @@ class EchoRMSNorm: Module {
 
     func callAsFunction(_ x: MLXArray) -> MLXArray {
         let rms = MLX.sqrt(MLX.mean(x * x, axis: -1, keepDims: true) + eps)
-        return (x / rms) * weight
+        let w: MLXArray
+        if perHead && x.ndim == 4 {
+            // x: [B, numHeads, seqLen, headDim], weight: [numHeads, headDim]
+            // Reshape weight to [1, numHeads, 1, headDim] for broadcasting
+            w = weight.reshaped([1, weight.dim(0), 1, weight.dim(1)])
+        } else {
+            w = weight
+        }
+        return (x / rms) * w
     }
 }
 
@@ -119,24 +127,24 @@ class EchoLowRankAdaLN: Module {
     @ModuleInfo(key: "gate_residual") var gateResidual: Linear
     @ModuleInfo(key: "norm") var norm: EchoRMSNorm
 
-    init(modelSize: Int, condSize: Int, rank: Int) {
+    init(modelSize: Int, rank: Int) {
         self.modelSize = modelSize
         self.rank = rank
 
-        // Shift path
-        self._shiftDown.wrappedValue = Linear(condSize, rank, bias: false)
+        // Shift path: condEmbed is split into 3 parts of modelSize each
+        self._shiftDown.wrappedValue = Linear(modelSize, rank, bias: false)
         self._shiftUp.wrappedValue = Linear(rank, modelSize, bias: false)
-        self._shiftResidual.wrappedValue = Linear(condSize, modelSize, bias: false)
+        self._shiftResidual.wrappedValue = Linear(modelSize, modelSize, bias: false)
 
         // Scale path
-        self._scaleDown.wrappedValue = Linear(condSize, rank, bias: false)
+        self._scaleDown.wrappedValue = Linear(modelSize, rank, bias: false)
         self._scaleUp.wrappedValue = Linear(rank, modelSize, bias: false)
-        self._scaleResidual.wrappedValue = Linear(condSize, modelSize, bias: false)
+        self._scaleResidual.wrappedValue = Linear(modelSize, modelSize, bias: false)
 
         // Gate path
-        self._gateDown.wrappedValue = Linear(condSize, rank, bias: false)
+        self._gateDown.wrappedValue = Linear(modelSize, rank, bias: false)
         self._gateUp.wrappedValue = Linear(rank, modelSize, bias: false)
-        self._gateResidual.wrappedValue = Linear(condSize, modelSize, bias: false)
+        self._gateResidual.wrappedValue = Linear(modelSize, modelSize, bias: false)
 
         self._norm.wrappedValue = EchoRMSNorm(dim: modelSize)
     }
@@ -441,12 +449,11 @@ class EchoTransformerBlock: Module {
     init(config: EchoDiTConfig, hasLatentAttention: Bool = false) {
         self._attention.wrappedValue = EchoJointAttention(config: config, hasLatentAttention: hasLatentAttention)
         self._mlp.wrappedValue = EchoMLP(modelSize: config.modelSize, intermediateSize: config.intermediateSize)
-        // condSize is modelSize * 3 (for shift, scale, gate)
         self._attentionAdaLN.wrappedValue = EchoLowRankAdaLN(
-            modelSize: config.modelSize, condSize: config.modelSize * 3, rank: config.adalnRank
+            modelSize: config.modelSize, rank: config.adalnRank
         )
         self._mlpAdaLN.wrappedValue = EchoLowRankAdaLN(
-            modelSize: config.modelSize, condSize: config.modelSize * 3, rank: config.adalnRank
+            modelSize: config.modelSize, rank: config.adalnRank
         )
     }
 
@@ -691,9 +698,9 @@ public class EchoDiT: Module {
         // Project input
         var h = inProj(x)
 
-        // Precompute RoPE
+        // Precompute RoPE for the half-head dimension used in JointAttention
         let halfHead = (config.modelSize / config.numHeads) / 2
-        let (cos, sin) = echoPrecomputeFreqsCis(dim: halfHead * 2, end: seqLen)
+        let (cos, sin) = echoPrecomputeFreqsCis(dim: halfHead, end: seqLen)
 
         // Downsample speaker mask by patchSize for attention
         var dsSpeakerMask = speakerMask
