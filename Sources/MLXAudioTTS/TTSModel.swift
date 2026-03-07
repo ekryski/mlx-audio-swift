@@ -111,6 +111,7 @@ public enum TTS {
         }
         if lower.contains("kokoro") {
             return "kokoro"
+        }
         if lower.contains("echo_tts") || lower.contains("echo-tts") || lower.contains("echo") {
             return "echo_tts"
         }
