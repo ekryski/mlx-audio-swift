@@ -1,18 +1,13 @@
 {
-  "originHash" : "34a7603e1dffe285f62fe8fd7ec827331ba2ed6e29af3d84bbe4067726673071",
+  "originHash" : "748928a1a714098b3ccb7b82e9e9812421845f5a6469130f1f4a247378dcfd0b",
   "pins" : [
     {
       "identity" : "async-http-client",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swift-server/async-http-client",
       "state" : {
-<<<<<<< HEAD
-        "revision" : "52ed9d172018e31f2dbb46f0d4f58d66e13c281e",
-        "version" : "1.31.0"
-=======
         "revision" : "2fc4652fb4689eb24af10e55cabaa61d8ba774fd",
         "version" : "1.32.0"
->>>>>>> main
       }
     },
     {
@@ -31,15 +26,6 @@
       "state" : {
         "revision" : "6ba4827fb82c97d012eec9ab4b2de21f85c3b33d",
         "version" : "0.30.6"
-      }
-    },
-    {
-      "identity" : "mlx-swift-lm",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ml-explore/mlx-swift-lm.git",
-      "state" : {
-        "revision" : "7e19e09027923d89ac47dd087d9627f610e5a91a",
-        "version" : "2.30.6"
       }
     },
     {
