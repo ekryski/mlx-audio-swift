@@ -24,7 +24,8 @@ public enum TTS {
     public static func loadModel(
         modelRepo: String,
         hfToken: String? = nil,
-        cache: HubCache = .default
+        cache: HubCache = .default,
+        quantization: EchoTTSModel.QuantizationConfig? = nil
     ) async throws -> SpeechGenerationModel {
         guard let repoID = Repo.ID(rawValue: modelRepo) else {
             throw TTSModelError.invalidRepositoryID(modelRepo)
@@ -35,13 +36,19 @@ public enum TTS {
             hfToken: hfToken,
             cache: cache
         )
-        return try await loadModel(modelRepo: modelRepo, modelType: modelType, cache: cache)
+        return try await loadModel(
+            modelRepo: modelRepo, modelType: modelType,
+            textProcessor: textProcessor, cache: cache,
+            quantization: quantization
+        )
     }
 
     public static func loadModel(
         modelRepo: String,
         modelType: String?,
-        cache: HubCache = .default
+        textProcessor: TextProcessor? = nil,
+        cache: HubCache = .default,
+        quantization: EchoTTSModel.QuantizationConfig? = nil
     ) async throws -> SpeechGenerationModel {
         let resolvedType = normalizedModelType(modelType) ?? inferModelType(from: modelRepo)
         guard let resolvedType else {
@@ -62,7 +69,9 @@ public enum TTS {
         case "pocket_tts":
             return try await PocketTTSModel.fromPretrained(modelRepo, cache: cache)
         case "echo_tts", "echo":
-            return try await EchoTTSModel.fromPretrained(modelRepo, cache: cache)
+            return try await EchoTTSModel.fromPretrained(
+                modelRepo, cache: cache, quantization: quantization
+            )
         default:
             throw TTSModelError.unsupportedModelType(modelType ?? resolvedType)
         }

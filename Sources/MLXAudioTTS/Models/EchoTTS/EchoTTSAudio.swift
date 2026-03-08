@@ -70,6 +70,90 @@ func echoAEDecode(fishAE: FishS1DAC, pcaState: EchoPCAState, zQ: MLXArray) -> ML
     return fishAE.decodeZQ(z.asType(.float32)).asType(.float32)
 }
 
+// MARK: - Overlapped Causal Decode
+
+/// Result from overlapped decode, containing the block's audio and optional
+/// overlap samples from the context decode for crossfading.
+struct EchoOverlappedDecodeResult {
+    /// Audio for the new block only (context portion discarded) [B, 1, blockFrames * 2048]
+    let blockAudio: MLXArray
+    /// Last `overlapSamples` from the context decode — represents the same temporal
+    /// region as the previous block's held-back tail, but re-decoded with the new block's
+    /// latent present. Use for true overlap-add crossfading: blending two versions of the
+    /// same temporal content eliminates ghosting artifacts from adjacent-signal crossfades.
+    /// Shape: [B, 1, overlapSamples], or nil if no context or overlapSamples=0.
+    let contextOverlap: MLXArray?
+}
+
+/// Decode a block's latents with previous blocks prepended as causal context.
+///
+/// Fish S1 DAC is fully causal (left-only padding in all convolutions, windowed causal
+/// attention in FishWindowLimitedTransformer with window=128). By prepending previous
+/// block latents as context, the decoder sees the causal history needed for the new block.
+///
+/// The `maxContextFrames` parameter limits how many context frames are prepended.
+/// The Fish S1 DAC decoder's effective receptive field is bounded by its causal
+/// convolutions (kernel=7, dilations 1/3/9) and windowed attention. Using 8 frames
+/// of context (~16,384 samples ≈ 0.37s) is sufficient for the decoder to produce
+/// audio identical to full-context decode, while dramatically reducing decode time
+/// (e.g., Block 1 decode drops from 3.9s to 2.6s with 8-frame context).
+///
+/// When `overlapSamples > 0`, also returns the last N samples of the context decode.
+/// These samples represent the same temporal region as the previous block's held-back
+/// tail, enabling true overlap-add crossfading (blend two decodings of the same content
+/// rather than adjacent content).
+///
+/// - Parameters:
+///   - fishAE: Fish S1 DAC codec
+///   - pcaState: PCA state for inverse PCA transform
+///   - contextLatent: Concatenated latents from all previous blocks [B, contextFrames, latentSize], or nil for first block
+///   - blockLatent: This block's latents [B, blockFrames, latentSize]
+///   - maxContextFrames: Maximum number of context frames to prepend (nil = unlimited)
+///   - overlapSamples: Number of samples from the end of the context decode to return for crossfading (0 = none)
+/// - Returns: `EchoOverlappedDecodeResult` with block audio and optional context overlap
+func echoAEDecodeOverlapped(
+    fishAE: FishS1DAC, pcaState: EchoPCAState,
+    contextLatent: MLXArray?, blockLatent: MLXArray,
+    maxContextFrames: Int? = nil,
+    overlapSamples: Int = 0
+) -> EchoOverlappedDecodeResult {
+    let fullLatent: MLXArray
+    let contextFrames: Int
+
+    if let ctx = contextLatent, ctx.dim(1) > 0 {
+        // Limit context to the last maxContextFrames frames (keep the most recent)
+        var trimmedCtx = ctx
+        if let maxFrames = maxContextFrames, ctx.dim(1) > maxFrames {
+            trimmedCtx = ctx[0..., (ctx.dim(1) - maxFrames)..., 0...]
+        }
+        fullLatent = MLX.concatenated([trimmedCtx, blockLatent], axis: 1)
+        contextFrames = trimmedCtx.dim(1)
+    } else {
+        fullLatent = blockLatent
+        contextFrames = 0
+    }
+
+    // Decode full sequence through codec (inverse PCA + Fish S1 DAC)
+    let fullAudio = echoAEDecode(fishAE: fishAE, pcaState: pcaState, zQ: fullLatent)
+
+    if contextFrames > 0 {
+        let contextSamples = contextFrames * 2048
+        let blockAudio = fullAudio[0..., 0..., contextSamples...]
+
+        // Extract overlap from the end of the context decode for crossfading.
+        // This represents the same temporal region as the previous block's tail,
+        // re-decoded with the new block's latent as "future" context.
+        var overlap: MLXArray? = nil
+        if overlapSamples > 0 && contextSamples >= overlapSamples {
+            overlap = fullAudio[0..., 0..., (contextSamples - overlapSamples)..<contextSamples]
+        }
+
+        return EchoOverlappedDecodeResult(blockAudio: blockAudio, contextOverlap: overlap)
+    }
+
+    return EchoOverlappedDecodeResult(blockAudio: fullAudio, contextOverlap: nil)
+}
+
 // MARK: - Silence Detection
 
 /// Find the point where generated latents flatten to zero (silence).
