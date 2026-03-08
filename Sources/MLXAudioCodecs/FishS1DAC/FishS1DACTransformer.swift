@@ -197,12 +197,19 @@ public class FishTransformer: Module {
 
 /// Transformer with window-limited causal attention and optional input/output projections.
 /// Operates on NCL tensors when channelsFirst=true.
+/// Inlines FishTransformer's layers+norm directly (matching Python's inheritance pattern)
+/// so weight keys like `layers.0.attention.wo.weight` map without extra nesting.
 public class FishWindowLimitedTransformer: Module {
     let channelsFirst: Bool
     let windowSize: Int
     let dim: Int
+    let headDim: Int
+    let ropeBase: Float
 
-    @ModuleInfo(key: "transformer") var transformer: FishTransformer
+    // Inlined from FishTransformer (no extra nesting level)
+    @ModuleInfo(key: "layers") var layers: [FishTransformerBlock]
+    @ModuleInfo(key: "norm") var norm: FishTFRMSNorm
+
     @ModuleInfo(key: "input_proj") var inputProj: Linear?
     @ModuleInfo(key: "output_proj") var outputProj: Linear?
 
@@ -216,8 +223,14 @@ public class FishWindowLimitedTransformer: Module {
         self.channelsFirst = channelsFirst
         self.windowSize = windowSize
         self.dim = config.dim
+        self.headDim = config.headDim
+        self.ropeBase = config.ropeBase
 
-        self._transformer.wrappedValue = FishTransformer(config: config)
+        // Inline the transformer layers and norm directly
+        self._layers.wrappedValue = (0..<config.nLayer).map { _ in
+            FishTransformerBlock(config: config)
+        }
+        self._norm.wrappedValue = FishTFRMSNorm(dim: config.dim, eps: config.normEps)
 
         if let inputDim = inputDim, inputDim != config.dim {
             self._inputProj.wrappedValue = Linear(inputDim, config.dim, bias: false)
@@ -259,8 +272,15 @@ public class FishWindowLimitedTransformer: Module {
         }
 
         let seqLen = h.dim(1)
+        let (cosFreqs, sinFreqs) = fishPrecomputeFreqsCis(
+            blockSize: seqLen, headDim: headDim, ropeBase: ropeBase
+        )
         let mask = makeWindowLimitedMask(maxLength: seqLen)
-        h = transformer(h, mask: mask)
+
+        for layer in layers {
+            h = layer(h, cosFreqs: cosFreqs, sinFreqs: sinFreqs, mask: mask)
+        }
+        h = norm(h)
 
         if let proj = outputProj {
             h = proj(h)

@@ -26,26 +26,46 @@ func echoPrecomputeFreqsCis(dim: Int, end: Int, theta: Float = 10000.0) -> (MLXA
 }
 
 func echoApplyRotaryEmb(_ x: MLXArray, cosFreqs: MLXArray, sinFreqs: MLXArray) -> MLXArray {
-    // x: [B, nHeads, seqLen, headDim]
-    let headDim = x.dim(-1)
-    let halfDim = headDim / 2
+    // x: [B, seqLen, nHeads, headDim] (Python layout, before SDPA transpose)
+    // cosFreqs/sinFreqs: [seqLen, halfDim]
+    // Uses interleaved even/odd indices (matching Python implementation)
+    let xEven = gatherAlternate(x, even: true)   // x[..., 0::2]
+    let xOdd = gatherAlternate(x, even: false)    // x[..., 1::2]
 
-    let x1 = x[0..., 0..., 0..., ..<halfDim]
-    let x2 = x[0..., 0..., 0..., halfDim...]
+    // Reshape cos/sin for broadcasting: [1, seqLen, 1, halfDim]
+    let cos = cosFreqs.reshaped([1, cosFreqs.dim(0), 1, cosFreqs.dim(1)])
+    let sin = sinFreqs.reshaped([1, sinFreqs.dim(0), 1, sinFreqs.dim(1)])
 
-    return MLX.concatenated([
-        x1 * cosFreqs - x2 * sinFreqs,
-        x1 * sinFreqs + x2 * cosFreqs
-    ], axis: -1)
+    let rotEven = xEven * cos - xOdd * sin
+    let rotOdd = xOdd * cos + xEven * sin
+
+    // Interleave back: stack along last axis then reshape
+    let stacked = MLX.stacked([rotEven, rotOdd], axis: -1)  // [..., halfDim, 2]
+    return stacked.reshaped(x.shape)
+}
+
+/// Gather even or odd indices along the last axis: x[..., 0::2] or x[..., 1::2]
+func gatherAlternate(_ x: MLXArray, even: Bool) -> MLXArray {
+    let lastDim = x.dim(-1)
+    let halfDim = lastDim / 2
+    let start = even ? 0 : 1
+    // Use stride-based indexing
+    var indices = [Int32](repeating: 0, count: halfDim)
+    for i in 0..<halfDim {
+        indices[i] = Int32(start + i * 2)
+    }
+    let idxArray = MLXArray(indices)
+    return x.take(idxArray, axis: x.ndim - 1)
 }
 
 // MARK: - Timestep Embedding
 
 func echoGetTimestepEmbedding(_ timestep: MLXArray, embedSize: Int) -> MLXArray {
     let halfDim = embedSize / 2
+    let base = log(Float(10000.0))
     var freqs = [Float](repeating: 0, count: halfDim)
     for i in 0..<halfDim {
-        freqs[i] = exp(-log(Float(10000.0)) * Float(i) / Float(halfDim))
+        freqs[i] = 1000.0 * exp(-base * Float(i) / Float(halfDim))
     }
     let freqsArray = MLXArray(freqs)
 
@@ -60,8 +80,15 @@ func echoGetTimestepEmbedding(_ timestep: MLXArray, embedSize: Int) -> MLXArray 
 
 func echoBoolToAdditiveMask(_ mask: MLXArray) -> MLXArray {
     // Convert boolean mask (true=attend) to additive mask (0=attend, -1e9=ignore)
-    let floatMask = mask.asType(.float32)
-    return (1.0 - floatMask) * (-1e9)
+    // Python: mx.where(mask, zero, neg_inf)[:, None, :, :]
+    let zero = MLXArray.zeros(mask.shape)
+    let negInf = MLXArray.full(mask.shape, values: MLXArray(-1e9))
+    let result = MLX.where(mask, zero, negInf)
+    // Add head dimension: [B, seqLen, kvLen] -> [B, 1, seqLen, kvLen]
+    if result.ndim == 3 {
+        return result.expandedDimensions(axis: 1)
+    }
+    return result
 }
 
 func echoMakeCausalMask(seqLen: Int) -> MLXArray {
@@ -72,6 +99,13 @@ func echoMakeCausalMask(seqLen: Int) -> MLXArray {
         }
     }
     return MLXArray(data, [seqLen, seqLen])
+}
+
+/// Boolean causal mask: row >= col
+func echoMakeCausalMaskBool(seqLen: Int) -> MLXArray {
+    let row = MLXArray(Array(0..<Int32(seqLen))).reshaped([seqLen, 1])
+    let col = MLXArray(Array(0..<Int32(seqLen))).reshaped([1, seqLen])
+    return row .>= col  // [seqLen, seqLen]
 }
 
 // MARK: - RMS Normalization
@@ -96,72 +130,66 @@ class EchoRMSNorm: Module {
     }
 
     func callAsFunction(_ x: MLXArray) -> MLXArray {
-        let rms = MLX.sqrt(MLX.mean(x * x, axis: -1, keepDims: true) + eps)
-        let w: MLXArray
-        if perHead && x.ndim == 4 {
-            // x: [B, numHeads, seqLen, headDim], weight: [numHeads, headDim]
-            // Reshape weight to [1, numHeads, 1, headDim] for broadcasting
-            w = weight.reshaped([1, weight.dim(0), 1, weight.dim(1)])
-        } else {
-            w = weight
-        }
-        return (x / rms) * w
+        // Python: cast to float32, use rsqrt, cast back
+        let xDtype = x.dtype
+        let xFloat = x.asType(.float32)
+        let rms = MLX.sqrt(MLX.mean(xFloat * xFloat, axis: -1, keepDims: true) + eps)
+        let result = (xFloat / rms) * weight
+        return result.asType(xDtype)
     }
 }
 
 // MARK: - Low-Rank Adaptive Layer Normalization
 
 /// Adaptive layer normalization with low-rank shift/scale/gate decomposition.
+/// Python: LowRankAdaLN - applies silu before down projection, residual is simply + input.
 class EchoLowRankAdaLN: Module {
     let modelSize: Int
     let rank: Int
+    let eps: Float
 
     @ModuleInfo(key: "shift_down") var shiftDown: Linear
     @ModuleInfo(key: "shift_up") var shiftUp: Linear
-    @ModuleInfo(key: "shift_residual") var shiftResidual: Linear
     @ModuleInfo(key: "scale_down") var scaleDown: Linear
     @ModuleInfo(key: "scale_up") var scaleUp: Linear
-    @ModuleInfo(key: "scale_residual") var scaleResidual: Linear
     @ModuleInfo(key: "gate_down") var gateDown: Linear
     @ModuleInfo(key: "gate_up") var gateUp: Linear
-    @ModuleInfo(key: "gate_residual") var gateResidual: Linear
-    @ModuleInfo(key: "norm") var norm: EchoRMSNorm
 
-    init(modelSize: Int, rank: Int) {
+    init(modelSize: Int, rank: Int, eps: Float = 1e-5) {
         self.modelSize = modelSize
         self.rank = rank
+        self.eps = eps
 
-        // Shift path: condEmbed is split into 3 parts of modelSize each
+        // Python: nn.Linear(model_size, rank, bias=False) for down, nn.Linear(rank, model_size, bias=True) for up
         self._shiftDown.wrappedValue = Linear(modelSize, rank, bias: false)
-        self._shiftUp.wrappedValue = Linear(rank, modelSize, bias: false)
-        self._shiftResidual.wrappedValue = Linear(modelSize, modelSize, bias: false)
-
-        // Scale path
+        self._shiftUp.wrappedValue = Linear(rank, modelSize)  // bias=true (default)
         self._scaleDown.wrappedValue = Linear(modelSize, rank, bias: false)
-        self._scaleUp.wrappedValue = Linear(rank, modelSize, bias: false)
-        self._scaleResidual.wrappedValue = Linear(modelSize, modelSize, bias: false)
-
-        // Gate path
+        self._scaleUp.wrappedValue = Linear(rank, modelSize)  // bias=true
         self._gateDown.wrappedValue = Linear(modelSize, rank, bias: false)
-        self._gateUp.wrappedValue = Linear(rank, modelSize, bias: false)
-        self._gateResidual.wrappedValue = Linear(modelSize, modelSize, bias: false)
-
-        self._norm.wrappedValue = EchoRMSNorm(dim: modelSize)
+        self._gateUp.wrappedValue = Linear(rank, modelSize)  // bias=true
     }
 
     /// Returns (normalized_x, gate).
     func callAsFunction(_ x: MLXArray, condEmbed: MLXArray) -> (MLXArray, MLXArray) {
         // condEmbed: [B, 1, condSize] split into 3 parts
         let condSize = condEmbed.dim(-1) / 3
-        let shiftCond = condEmbed[0..., 0..., ..<condSize]
-        let scaleCond = condEmbed[0..., 0..., condSize..<(2 * condSize)]
-        let gateCond = condEmbed[0..., 0..., (2 * condSize)...]
+        var shiftVal = condEmbed[0..., 0..., ..<condSize]
+        var scaleVal = condEmbed[0..., 0..., condSize..<(2 * condSize)]
+        var gateVal = condEmbed[0..., 0..., (2 * condSize)...]
 
-        let shift = shiftUp(shiftDown(shiftCond)) + shiftResidual(shiftCond)
-        let scale = scaleUp(scaleDown(scaleCond)) + scaleResidual(scaleCond)
-        let gate = MLX.tanh(gateUp(gateDown(gateCond)) + gateResidual(gateCond))
+        // Python: shift = self.shift_up(self.shift_down(nn.silu(shift))) + shift
+        shiftVal = shiftUp(shiftDown(silu(shiftVal))) + shiftVal
+        scaleVal = scaleUp(scaleDown(silu(scaleVal))) + scaleVal
+        gateVal = gateUp(gateDown(silu(gateVal))) + gateVal
 
-        let normalized = norm(x) * (scale + 1.0) + shift
+        // RMS norm inline (Python: keeps in float32 through scale/shift, casts back at the end)
+        let xDtype = x.dtype
+        let xFloat = x.asType(.float32)
+        let xNorm = xFloat * MLX.rsqrt(MLX.mean(xFloat * xFloat, axis: -1, keepDims: true) + eps)
+
+        // Apply scale/shift in float32 space, then cast back (matching Python)
+        let normalized = (xNorm * (scaleVal + 1.0) + shiftVal).asType(xDtype)
+        let gate = MLX.tanh(gateVal)
         return (normalized, gate)
     }
 }
@@ -198,28 +226,37 @@ class EchoSelfAttention: Module {
     ) -> MLXArray {
         let (bsz, seqLen, _) = (x.dim(0), x.dim(1), x.dim(2))
 
-        var q = wq(x).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3)
-        var k = wk(x).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3)
-        let v = wv(x).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3)
+        // Keep in [B, seqLen, numHeads, headDim] for QK norm and RoPE (matching Python)
+        var q = wq(x).reshaped([bsz, seqLen, numHeads, headDim])
+        var k = wk(x).reshaped([bsz, seqLen, numHeads, headDim])
+        let v = wv(x).reshaped([bsz, seqLen, numHeads, headDim])
+        let gateVal = gate(x)
 
-        // QK normalization
+        // QK normalization (works on [B, seqLen, numHeads, headDim])
         q = qNorm(q)
         k = kNorm(k)
 
-        // RoPE
-        q = echoApplyRotaryEmb(q, cosFreqs: cosFreqs, sinFreqs: sinFreqs)
-        k = echoApplyRotaryEmb(k, cosFreqs: cosFreqs, sinFreqs: sinFreqs)
+        // RoPE applied in [B, seqLen, numHeads, headDim] layout
+        let cosSliced = cosFreqs[..<seqLen]
+        let sinSliced = sinFreqs[..<seqLen]
+        q = echoApplyRotaryEmb(q, cosFreqs: cosSliced, sinFreqs: sinSliced)
+        k = echoApplyRotaryEmb(k, cosFreqs: cosSliced, sinFreqs: sinSliced)
+
+        // Now transpose for SDPA: [B, numHeads, seqLen, headDim]
+        let qT = q.transposed(0, 2, 1, 3)
+        let kT = k.transposed(0, 2, 1, 3)
+        let vT = v.transposed(0, 2, 1, 3)
 
         let scale = sqrt(Float(headDim))
         let output = MLXFast.scaledDotProductAttention(
-            queries: q, keys: k, values: v,
+            queries: qT, keys: kT, values: vT,
             scale: 1.0 / scale, mask: mask
         )
 
         let outputReshaped = output.transposed(0, 2, 1, 3).reshaped([bsz, seqLen, numHeads * headDim])
 
         // Gated output
-        return outputReshaped * sigmoid(gate(x))
+        return wo(outputReshaped * sigmoid(gateVal))
     }
 }
 
@@ -285,27 +322,38 @@ class EchoJointAttention: Module {
         self._kNorm.wrappedValue = EchoRMSNorm(numHeads: config.numHeads, headDim: headDim)
     }
 
-    /// Build text KV cache for a layer.
+    /// Build text KV cache for a layer. Returns [B, seqLen, numHeads, headDim].
     func getKVCacheText(_ textState: MLXArray) -> (MLXArray, MLXArray) {
         let bsz = textState.dim(0)
         let seqLen = textState.dim(1)
-        let k = kNorm(wkText(textState).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3))
-        let v = wvText(textState).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3)
+        let k = kNorm(wkText(textState).reshaped([bsz, seqLen, numHeads, headDim]))
+        let v = wvText(textState).reshaped([bsz, seqLen, numHeads, headDim])
         return (k, v)
     }
 
-    /// Build speaker KV cache for a layer.
+    /// Build speaker KV cache for a layer. Returns [B, seqLen, numHeads, headDim].
     func getKVCacheSpeaker(_ speakerState: MLXArray) -> (MLXArray, MLXArray) {
         let bsz = speakerState.dim(0)
         let seqLen = speakerState.dim(1)
-        let k = kNorm(wkSpeaker(speakerState).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3))
-        let v = wvSpeaker(speakerState).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3)
+        let k = kNorm(wkSpeaker(speakerState).reshaped([bsz, seqLen, numHeads, headDim]))
+        let v = wvSpeaker(speakerState).reshaped([bsz, seqLen, numHeads, headDim])
         return (k, v)
+    }
+
+    /// Apply rotary embeddings to only the first half of heads (Python: _apply_rotary_half).
+    /// Input shape: [B, seqLen, numHeads, headDim]
+    func applyRotaryHalf(_ y: MLXArray, cosFreqs: MLXArray, sinFreqs: MLXArray) -> MLXArray {
+        let halfHeads = y.dim(-2) / 2  // Split on HEADS dimension, not headDim!
+        let y1 = y[0..., 0..., ..<halfHeads, 0...]  // First half of heads
+        let y2 = y[0..., 0..., halfHeads..., 0...]   // Second half of heads
+        let y1Rotated = echoApplyRotaryEmb(y1, cosFreqs: cosFreqs, sinFreqs: sinFreqs)
+        return MLX.concatenated([y1Rotated, y2], axis: -2)  // Concat along heads dim
     }
 
     func callAsFunction(
         _ x: MLXArray,
         cosFreqs: MLXArray, sinFreqs: MLXArray,
+        startPos: Int,
         textKV: (MLXArray, MLXArray),
         speakerKV: (MLXArray, MLXArray),
         latentKV: (MLXArray, MLXArray)? = nil,
@@ -314,85 +362,91 @@ class EchoJointAttention: Module {
     ) -> MLXArray {
         let (bsz, seqLen, _) = (x.dim(0), x.dim(1), x.dim(2))
 
-        // Self Q, K, V
-        var q = wq(x).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3)
-        var selfK = wk(x).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3)
-        let selfV = wv(x).reshaped([bsz, seqLen, numHeads, headDim]).transposed(0, 2, 1, 3)
+        // Keep in [B, seqLen, numHeads, headDim] for QK norm and RoPE
+        var q = wq(x).reshaped([bsz, seqLen, numHeads, headDim])
+        var selfK = wk(x).reshaped([bsz, seqLen, numHeads, headDim])
+        let selfV = wv(x).reshaped([bsz, seqLen, numHeads, headDim])
+        let gateVal = gate(x)
 
         // QK norm
         q = qNorm(q)
         selfK = kNorm(selfK)
 
-        // Apply RoPE to only first half of Q and self-K positions
-        let halfHead = headDim / 2
-        let qFirst = q[0..., 0..., 0..., ..<halfHead]
-        let qSecond = q[0..., 0..., 0..., halfHead...]
-        let qRotated = echoApplyRotaryEmb(qFirst, cosFreqs: cosFreqs, sinFreqs: sinFreqs)
-        q = MLX.concatenated([qRotated, qSecond], axis: -1)
+        // Apply RoPE to first half of HEADS (not head_dim!)
+        let qCos = cosFreqs[startPos..<(startPos + seqLen)]
+        let qSin = sinFreqs[startPos..<(startPos + seqLen)]
+        q = applyRotaryHalf(q, cosFreqs: qCos, sinFreqs: qSin)
+        selfK = applyRotaryHalf(selfK, cosFreqs: qCos, sinFreqs: qSin)
 
-        let kFirst = selfK[0..., 0..., 0..., ..<halfHead]
-        let kSecond = selfK[0..., 0..., 0..., halfHead...]
-        let kRotated = echoApplyRotaryEmb(kFirst, cosFreqs: cosFreqs, sinFreqs: sinFreqs)
-        selfK = MLX.concatenated([kRotated, kSecond], axis: -1)
+        // Transpose for SDPA and KV concatenation: [B, numHeads, seqLen, headDim]
+        let qT = q.transposed(0, 2, 1, 3)
+        let selfKT = selfK.transposed(0, 2, 1, 3)
+        let selfVT = selfV.transposed(0, 2, 1, 3)
 
-        // Concatenate all KV sources: [self, latent_prefix?, text, speaker]
-        var allK = [selfK]
-        var allV = [selfV]
-        var totalKVLen = seqLen
+        // KV caches are already in [B, seqLen, numHeads, headDim] from get_kv_cache_*
+        // Need to transpose them to [B, numHeads, seqLen, headDim] for SDPA
+        let (textK, textV) = textKV
+        let (spkK, spkV) = speakerKV
 
-        if let (lk, lv) = latentKV {
-            allK.append(lk)
-            allV.append(lv)
-            totalKVLen += lk.dim(2)
+        // Concatenate all KV sources along sequence dimension: [self, latent?, text, speaker]
+        var allK = [selfKT]
+        var allV = [selfVT]
+
+        if let (lk, lv) = latentKV, lk.dim(1) > 0 {
+            allK.append(lk.transposed(0, 2, 1, 3))
+            allV.append(lv.transposed(0, 2, 1, 3))
         }
 
-        let (textK, textV) = textKV
-        allK.append(textK)
-        allV.append(textV)
-        totalKVLen += textK.dim(2)
+        allK.append(textK.transposed(0, 2, 1, 3))
+        allV.append(textV.transposed(0, 2, 1, 3))
 
-        let (spkK, spkV) = speakerKV
-        allK.append(spkK)
-        allV.append(spkV)
-        totalKVLen += spkK.dim(2)
+        allK.append(spkK.transposed(0, 2, 1, 3))
+        allV.append(spkV.transposed(0, 2, 1, 3))
 
         let kCat = MLX.concatenated(allK, axis: 2)
         let vCat = MLX.concatenated(allV, axis: 2)
 
-        // Build combined attention mask
-        // Self-attention part: no mask needed (all attend)
-        // For text and speaker: use their respective masks
-        var maskParts: [MLXArray] = []
-        // Self: [seqLen] all zeros (attend)
-        maskParts.append(MLXArray.zeros([bsz, 1, 1, seqLen]))
+        // Build combined attention mask (Python style: boolean mask then additive)
+        // Python: mask = mx.concatenate([self_mask, latent_mask, text_mask, speaker_mask], axis=1)
+        // then broadcasts [B, totalKVLen] -> [B, seqLen, totalKVLen] -> _bool_to_additive_mask
+        let selfMaskBool = MLXArray.ones([bsz, seqLen], type: Bool.self)
+        var maskParts: [MLXArray] = [selfMaskBool]
 
-        if let (lk, _) = latentKV {
-            maskParts.append(MLXArray.zeros([bsz, 1, 1, lk.dim(2)]))
+        // Latent mask
+        if let (lk, _) = latentKV, lk.dim(1) > 0 {
+            let latentLen = lk.dim(1)
+            let latentMask = MLXArray.zeros([bsz, latentLen], type: Bool.self)
+            maskParts.append(latentMask)
         }
 
+        // Text mask
         if let tm = textMask {
-            // tm: [B, textLen] -> [B, 1, 1, textLen] additive
-            maskParts.append(echoBoolToAdditiveMask(tm).reshaped([bsz, 1, 1, -1]))
+            maskParts.append(tm.asType(Bool.self))
         } else {
-            maskParts.append(MLXArray.zeros([bsz, 1, 1, textK.dim(2)]))
+            maskParts.append(MLXArray.ones([bsz, textK.dim(1)], type: Bool.self))
         }
 
+        // Speaker mask
         if let sm = speakerMask {
-            maskParts.append(echoBoolToAdditiveMask(sm).reshaped([bsz, 1, 1, -1]))
+            maskParts.append(sm.asType(Bool.self))
         } else {
-            maskParts.append(MLXArray.zeros([bsz, 1, 1, spkK.dim(2)]))
+            maskParts.append(MLXArray.ones([bsz, spkK.dim(1)], type: Bool.self))
         }
 
-        let combinedMask = MLX.concatenated(maskParts, axis: -1)
+        let combinedBoolMask = MLX.concatenated(maskParts, axis: 1)
+        // All query positions see the same key mask, so reshape to [B, 1, 1, totalKVLen]
+        // for broadcasting over heads and queries in SDPA
+        let floatMask = combinedBoolMask.asType(.float32)
+        let additiveMask = ((1.0 - floatMask) * (-1e9)).reshaped([bsz, 1, 1, -1])
 
         let scale = sqrt(Float(headDim))
         let output = MLXFast.scaledDotProductAttention(
-            queries: q, keys: kCat, values: vCat,
-            scale: 1.0 / scale, mask: combinedMask
+            queries: qT, keys: kCat, values: vCat,
+            scale: 1.0 / scale, mask: additiveMask
         )
 
         let outputReshaped = output.transposed(0, 2, 1, 3).reshaped([bsz, seqLen, numHeads * headDim])
-        return wo(outputReshaped) * sigmoid(gate(x))
+        return wo(outputReshaped * sigmoid(gateVal))
     }
 }
 
@@ -450,10 +504,10 @@ class EchoTransformerBlock: Module {
         self._attention.wrappedValue = EchoJointAttention(config: config, hasLatentAttention: hasLatentAttention)
         self._mlp.wrappedValue = EchoMLP(modelSize: config.modelSize, intermediateSize: config.intermediateSize)
         self._attentionAdaLN.wrappedValue = EchoLowRankAdaLN(
-            modelSize: config.modelSize, rank: config.adalnRank
+            modelSize: config.modelSize, rank: config.adalnRank, eps: config.normEps
         )
         self._mlpAdaLN.wrappedValue = EchoLowRankAdaLN(
-            modelSize: config.modelSize, rank: config.adalnRank
+            modelSize: config.modelSize, rank: config.adalnRank, eps: config.normEps
         )
     }
 
@@ -461,6 +515,7 @@ class EchoTransformerBlock: Module {
         _ x: MLXArray,
         condEmbed: MLXArray,
         cosFreqs: MLXArray, sinFreqs: MLXArray,
+        startPos: Int,
         textKV: (MLXArray, MLXArray),
         speakerKV: (MLXArray, MLXArray),
         latentKV: (MLXArray, MLXArray)? = nil,
@@ -472,6 +527,7 @@ class EchoTransformerBlock: Module {
         let attnOutput = attention(
             xNormAttn,
             cosFreqs: cosFreqs, sinFreqs: sinFreqs,
+            startPos: startPos,
             textKV: textKV, speakerKV: speakerKV,
             latentKV: latentKV,
             textMask: textMask, speakerMask: speakerMask
@@ -493,8 +549,8 @@ class EchoTextEncoder: Module {
     let numHeads: Int
     let headDim: Int
 
-    @ModuleInfo(key: "embedding") var embedding: Embedding
-    @ModuleInfo(key: "layers") var layers: [EchoEncoderTransformerBlock]
+    @ModuleInfo(key: "text_embedding") var embedding: Embedding
+    @ModuleInfo(key: "blocks") var layers: [EchoEncoderTransformerBlock]
 
     init(config: EchoDiTConfig) {
         self.modelSize = config.textModelSize
@@ -515,15 +571,21 @@ class EchoTextEncoder: Module {
 
     func callAsFunction(_ tokens: MLXArray, mask: MLXArray? = nil) -> MLXArray {
         let seqLen = tokens.dim(1)
+        let bsz = tokens.dim(0)
         var h = embedding(tokens)
 
         let (cos, sin) = echoPrecomputeFreqsCis(dim: headDim, end: seqLen)
 
-        // Non-causal: no causal mask, just key mask from padding
+        // Non-causal: key mask from padding only
+        // Python: mask is [B, seqLen] boolean, broadcast to [B, seqLen, seqLen], then additive
         let attnMask: MLXArray?
         if let m = mask {
-            // [B, seqLen] -> [B, 1, 1, seqLen]
-            attnMask = echoBoolToAdditiveMask(m).reshaped([m.dim(0), 1, 1, -1])
+            // [B, seqLen] -> broadcast to [B, seqLen, seqLen]
+            let keyMask = MLX.broadcast(
+                m.reshaped([bsz, 1, seqLen]).asType(Bool.self),
+                to: [bsz, seqLen, seqLen]
+            )
+            attnMask = echoBoolToAdditiveMask(keyMask)  // [B, 1, seqLen, seqLen]
         } else {
             attnMask = nil
         }
@@ -544,7 +606,7 @@ class EchoSpeakerEncoder: Module {
     let patchSize: Int
 
     @ModuleInfo(key: "in_proj") var inProj: Linear
-    @ModuleInfo(key: "layers") var layers: [EchoEncoderTransformerBlock]
+    @ModuleInfo(key: "blocks") var layers: [EchoEncoderTransformerBlock]
 
     init(config: EchoDiTConfig) {
         self.modelSize = config.speakerModelSize
@@ -552,11 +614,10 @@ class EchoSpeakerEncoder: Module {
         self.headDim = config.speakerModelSize / config.speakerNumHeads
         self.patchSize = config.speakerPatchSize
 
-        // Input projection from patched latent
+        // Input projection from patched latent (Python: bias=True)
         self._inProj.wrappedValue = Linear(
             config.latentSize * config.speakerPatchSize,
-            config.speakerModelSize,
-            bias: false
+            config.speakerModelSize
         )
         self._layers.wrappedValue = (0..<config.speakerNumLayers).map { _ in
             EchoEncoderTransformerBlock(
@@ -567,32 +628,32 @@ class EchoSpeakerEncoder: Module {
         }
     }
 
-    func callAsFunction(_ latent: MLXArray, mask: MLXArray? = nil) -> MLXArray {
+    /// Python SpeakerEncoder.__call__ takes only latent, no mask. Uses causal attention.
+    func callAsFunction(_ latent: MLXArray) -> MLXArray {
         let bsz = latent.dim(0)
         let seqLen = latent.dim(1)
         let latentSize = latent.dim(2)
 
+        // Truncate to multiple of patchSize
+        let seqLenPatched = (seqLen / patchSize) * patchSize
+        let truncatedLatent = latent[0..., ..<seqLenPatched, 0...]
+
         // Patch: [B, T, latentSize] -> [B, T/patchSize, latentSize * patchSize]
-        let patchedLen = seqLen / patchSize
-        let patched = latent.reshaped([bsz, patchedLen, latentSize * patchSize])
+        let patchedLen = seqLenPatched / patchSize
+        let patched = truncatedLatent.reshaped([bsz, patchedLen, latentSize * patchSize])
 
         // Project and scale
         var h = inProj(patched) / 6.0
 
         let (cos, sin) = echoPrecomputeFreqsCis(dim: headDim, end: patchedLen)
 
-        // Causal attention
-        let causalMask = echoMakeCausalMask(seqLen: patchedLen)
-
-        // Combine with key mask if provided
-        var attnMask = causalMask
-        if let m = mask {
-            // Downsample mask by patchSize
-            // Take every patchSize-th element
-            let dsMask = m[0..., stride(from: 0, to: m.dim(1), by: patchSize)]
-            let keyMask = echoBoolToAdditiveMask(dsMask).reshaped([bsz, 1, 1, -1])
-            attnMask = causalMask + keyMask
-        }
+        // Python SpeakerEncoder passes mask=None to blocks, but blocks use is_causal=True
+        // So the SelfAttention creates causal mask internally
+        // We pass a causal mask via the attn mask mechanism
+        let causalBool = echoMakeCausalMaskBool(seqLen: patchedLen)
+        let attnMask = echoBoolToAdditiveMask(
+            causalBool.expandedDimensions(axis: 0).asType(Bool.self)
+        )  // [1, 1, seqLen, seqLen]
 
         for layer in layers {
             h = layer(h, cosFreqs: cos, sinFreqs: sin, mask: attnMask)
@@ -623,8 +684,8 @@ public class EchoDiT: Module {
     @ModuleInfo(key: "out_norm") var outNorm: EchoRMSNorm
     @ModuleInfo(key: "out_proj") var outProj: Linear
 
-    // Main transformer blocks
-    @ModuleInfo(key: "layers") var layers: [EchoTransformerBlock]
+    // Main transformer blocks (Python: self.blocks)
+    @ModuleInfo(key: "blocks") var layers: [EchoTransformerBlock]
 
     public init(_ config: EchoDiTConfig, hasLatentAttention: Bool = false) {
         self.config = config
@@ -643,18 +704,19 @@ public class EchoDiT: Module {
         }
 
         // Condition module: Sequential(Linear, SiLU, Linear, SiLU, Linear)
-        // timestepEmbedSize -> modelSize -> modelSize -> modelSize * 3
+        // Python: all bias=False
         self._condModule.wrappedValue = EchoSequential(layers: [
-            Linear(config.timestepEmbedSize, config.modelSize),
+            Linear(config.timestepEmbedSize, config.modelSize, bias: false),
             SiLUModule(),
-            Linear(config.modelSize, config.modelSize),
+            Linear(config.modelSize, config.modelSize, bias: false),
             SiLUModule(),
-            Linear(config.modelSize, config.modelSize * 3),
+            Linear(config.modelSize, config.modelSize * 3, bias: false),
         ])
 
-        self._inProj.wrappedValue = Linear(config.latentSize, config.modelSize, bias: false)
+        // Python: in_proj and out_proj have bias=True
+        self._inProj.wrappedValue = Linear(config.latentSize, config.modelSize)
         self._outNorm.wrappedValue = EchoRMSNorm(dim: config.modelSize)
-        self._outProj.wrappedValue = Linear(config.modelSize, config.latentSize, bias: false)
+        self._outProj.wrappedValue = Linear(config.modelSize, config.latentSize)
 
         self._layers.wrappedValue = (0..<config.numLayers).map { _ in
             EchoTransformerBlock(config: config, hasLatentAttention: hasLatentAttention)
@@ -671,8 +733,9 @@ public class EchoDiT: Module {
     }
 
     /// Encode speaker latent and build per-layer KV caches.
-    public func getKVCacheSpeaker(_ latent: MLXArray, mask: MLXArray? = nil) -> EchoKVCache {
-        var speakerState = speakerEncoder(latent, mask: mask)
+    /// Python: get_kv_cache_speaker(speaker_latent) - no mask parameter.
+    public func getKVCacheSpeaker(_ latent: MLXArray) -> EchoKVCache {
+        var speakerState = speakerEncoder(latent)
         speakerState = speakerNorm(speakerState)
         return layers.map { layer in
             layer.attention.getKVCacheSpeaker(speakerState)
@@ -687,9 +750,11 @@ public class EchoDiT: Module {
         speakerKVCache: EchoKVCache,
         latentKVCache: EchoKVCache? = nil,
         textMask: MLXArray? = nil,
-        speakerMask: MLXArray? = nil
+        speakerMask: MLXArray? = nil,
+        startPos: Int = 0
     ) -> MLXArray {
         let seqLen = x.dim(1)
+        let maxPos = startPos + seqLen
 
         // Timestep conditioning
         let tEmbed = echoGetTimestepEmbedding(timestep, embedSize: config.timestepEmbedSize)
@@ -698,18 +763,15 @@ public class EchoDiT: Module {
         // Project input
         var h = inProj(x)
 
-        // Precompute RoPE for the half-head dimension used in JointAttention
-        let halfHead = (config.modelSize / config.numHeads) / 2
-        let (cos, sin) = echoPrecomputeFreqsCis(dim: halfHead, end: seqLen)
+        // Precompute RoPE for FULL headDim (Python: precompute_freqs_cis(self.head_dim, max_pos))
+        let headDim = config.modelSize / config.numHeads
+        let (cos, sin) = echoPrecomputeFreqsCis(dim: headDim, end: maxPos)
 
-        // Downsample speaker mask by patchSize for attention
+        // Downsample speaker mask by patchSize (Python: speaker_mask[..., ::self.speaker_patch_size])
         var dsSpeakerMask = speakerMask
         if let sm = speakerMask {
             let patchSize = config.speakerPatchSize
-            let patchedLen = sm.dim(1) / patchSize
-            if patchedLen > 0 {
-                dsSpeakerMask = sm[0..., stride(from: 0, to: sm.dim(1), by: patchSize)]
-            }
+            dsSpeakerMask = sm[0..., stride(from: 0, to: sm.dim(1), by: patchSize)]
         }
 
         // Run through transformer blocks
@@ -722,6 +784,7 @@ public class EchoDiT: Module {
                 h,
                 condEmbed: condEmbed,
                 cosFreqs: cos, sinFreqs: sin,
+                startPos: startPos,
                 textKV: textKV, speakerKV: speakerKV,
                 latentKV: latentKV,
                 textMask: textMask, speakerMask: dsSpeakerMask

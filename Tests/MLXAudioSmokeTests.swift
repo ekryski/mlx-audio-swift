@@ -420,19 +420,41 @@ struct TTSSmokeTests {
     @Test func echoTTSGenerate() async throws {
         testHeader("echoTTSGenerate")
         defer { testCleanup("echoTTSGenerate") }
+
+        // Load reference audio for voice cloning (Echo TTS expects 44.1kHz)
+        // Try sam-altman.wav first, fall back to bundled conversational_a.wav
+        let refAudio: MLXArray
+        let samAltmanPath = "\(NSHomeDirectory())/.sam/voices/standard/sam-altman.wav"
+        if FileManager.default.fileExists(atPath: samAltmanPath) {
+            let samURL = URL(fileURLWithPath: samAltmanPath)
+            let (_, loaded) = try loadAudioArray(from: samURL, sampleRate: 44100)
+            refAudio = loaded
+            print("\u{001B}[36mLoaded sam-altman.wav reference audio: \(refAudio.shape)\u{001B}[0m")
+        } else {
+            guard let audioURL = Bundle.module.url(
+                forResource: "conversational_a", withExtension: "wav", subdirectory: "media"
+            ) else {
+                Issue.record("Test audio file 'conversational_a.wav' not found in bundle")
+                return
+            }
+            let (_, loaded) = try loadAudioArray(from: audioURL, sampleRate: 44100)
+            refAudio = loaded
+            print("\u{001B}[36mLoaded conversational_a.wav reference audio: \(refAudio.shape)\u{001B}[0m")
+        }
+
         print("\u{001B}[33mLoading Echo TTS model...\u{001B}[0m")
         let model = try await EchoTTSModel.fromPretrained("mlx-community/echo-tts-base")
         print("\u{001B}[32mEcho TTS model loaded!\u{001B}[0m")
 
         #expect(model.sampleRate == 44100, "Sample rate should be 44100")
 
-        let text = "Hello, this is a test of the Echo text to speech model."
+        let text = "Hello. This is a preview of the Sam Altman voice."
         print("\u{001B}[33mGenerating audio for: \"\(text)\"...\u{001B}[0m")
 
         let audio = try await model.generate(
             text: text,
             voice: nil,
-            refAudio: nil,
+            refAudio: refAudio,
             refText: nil,
             language: nil,
             generationParameters: model.defaultGenerationParameters
@@ -440,6 +462,12 @@ struct TTSSmokeTests {
 
         print("\u{001B}[32mGenerated audio shape: \(audio.shape)\u{001B}[0m")
         #expect(audio.shape[0] > 0, "Audio should have samples")
+
+        // Verify reasonable duration (at least 0.5s and less than 60s at 44.1kHz)
+        let durationSec = Double(audio.shape[0]) / 44100.0
+        print("\u{001B}[32mGenerated audio duration: \(String(format: "%.2f", durationSec))s\u{001B}[0m")
+        #expect(durationSec > 0.5, "Audio should be at least 0.5 seconds")
+        #expect(durationSec < 60.0, "Audio should be less than 60 seconds")
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("echo_tts_test_output.wav")

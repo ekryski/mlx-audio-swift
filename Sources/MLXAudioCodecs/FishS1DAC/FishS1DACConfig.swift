@@ -65,11 +65,12 @@ public struct FishS1DACConfig: Decodable {
     public init(from jsonDecoder: any Swift.Decoder) throws {
         let c = try jsonDecoder.container(keyedBy: CodingKeys.self)
 
-        self.blockSize = (try? c.decode(Int.self, forKey: CodingKeys.blockSize)) ?? 2048
+        // Transformer defaults match Python fish-speech ModelArgs
+        self.blockSize = (try? c.decode(Int.self, forKey: CodingKeys.blockSize)) ?? 16384
         self.nLayer = (try? c.decode(Int.self, forKey: CodingKeys.nLayer)) ?? 8
-        self.nHead = (try? c.decode(Int.self, forKey: CodingKeys.nHead)) ?? 8
-        self.dim = (try? c.decode(Int.self, forKey: CodingKeys.dim)) ?? 512
-        self.intermediateSize = (try? c.decode(Int.self, forKey: CodingKeys.intermediateSize)) ?? 1536
+        self.nHead = (try? c.decode(Int.self, forKey: CodingKeys.nHead)) ?? 16
+        self.dim = (try? c.decode(Int.self, forKey: CodingKeys.dim)) ?? 1024
+        self.intermediateSize = (try? c.decode(Int.self, forKey: CodingKeys.intermediateSize)) ?? 3072
         self.nLocalHeads = (try? c.decode(Int.self, forKey: CodingKeys.nLocalHeads)) ?? -1
         self.headDim = (try? c.decode(Int.self, forKey: CodingKeys.headDim)) ?? 64
         self.ropeBase = (try? c.decode(Float.self, forKey: CodingKeys.ropeBase)) ?? 10000.0
@@ -99,12 +100,13 @@ public struct FishS1DACConfig: Decodable {
     }
 
     public init() {
-        blockSize = 2048
+        // Transformer defaults match Python fish-speech ModelArgs
+        blockSize = 16384
         nLayer = 8
-        nHead = 8
-        dim = 512
-        intermediateSize = 1536
-        nLocalHeads = 8
+        nHead = 16
+        dim = 1024
+        intermediateSize = 3072
+        nLocalHeads = 16
         headDim = 64
         ropeBase = 10000.0
         normEps = 1e-5

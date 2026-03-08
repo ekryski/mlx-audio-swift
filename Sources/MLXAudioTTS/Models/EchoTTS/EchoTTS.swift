@@ -9,7 +9,7 @@ import MLXAudioCore
 // MARK: - Echo TTS Model
 
 public final class EchoTTSModel: SpeechGenerationModel, @unchecked Sendable {
-    public let config: EchoTTSConfig
+    public var config: EchoTTSConfig
     let model: EchoDiT
     var fishAE: FishS1DAC?
     var pcaState: EchoPCAState?
@@ -43,12 +43,17 @@ public final class EchoTTSModel: SpeechGenerationModel, @unchecked Sendable {
             // Skip PCA state keys
             if pcaKeys.contains(key) { continue }
 
-            // Skip blockwise module keys if configured
-            if config.deleteBlockwiseModules {
-                if blockwiseKeys.contains(where: { key.contains($0) }) { continue }
+            var newKey = key
+
+            // Strip "model." prefix since we load directly into the EchoDiT instance
+            if newKey.hasPrefix("model.") {
+                newKey = String(newKey.dropFirst(6))
             }
 
-            var newKey = key
+            // Skip blockwise module keys if configured
+            if config.deleteBlockwiseModules {
+                if blockwiseKeys.contains(where: { newKey.contains($0) }) { continue }
+            }
 
             // Remap Sequential naming: cond_module.0.weight -> cond_module.layers.0.weight
             if newKey.contains("cond_module.") && !newKey.contains("cond_module.layers.") {
@@ -56,11 +61,6 @@ public final class EchoTTSModel: SpeechGenerationModel, @unchecked Sendable {
                     of: "cond_module.",
                     with: "cond_module.layers."
                 )
-            }
-
-            // Prefix with model. if not already present
-            if !newKey.hasPrefix("model.") {
-                newKey = "model." + newKey
             }
 
             sanitized[newKey] = value
@@ -92,9 +92,22 @@ public final class EchoTTSModel: SpeechGenerationModel, @unchecked Sendable {
         // Load config
         let configURL = modelDir.appendingPathComponent("config.json")
         let configData = try Data(contentsOf: configURL)
-        let config = try JSONDecoder().decode(EchoTTSConfig.self, from: configData)
+        var config = try JSONDecoder().decode(EchoTTSConfig.self, from: configData)
 
-        // Create model
+        // Apply optimized defaults
+        // 30 steps produces nearly identical quality to 40, ~25% faster
+        if config.sampler.numSteps > 30 {
+            config.sampler.numSteps = 30
+        }
+        // config.json ships cfg_scale_speaker=8.0, but 5.0 produces cleaner output
+        if config.sampler.cfgScaleSpeaker > 5.0 {
+            config.sampler.cfgScaleSpeaker = 5.0
+        }
+        // NOTE: speaker_kv_scale is left as nil (disabled) intentionally.
+        // Enabling it (e.g. 1.5) combined with cfg_scale_speaker >= 5.0 causes the
+        // model to over-condition on the speaker, producing extremely long outputs
+        // (21s instead of 4s) that sound like slow motion. If enabling KV scaling,
+        // cfg_scale_speaker must be reduced to ~3.0 to compensate.
         let model = EchoTTSModel(config: config)
 
         // Load weights
@@ -102,10 +115,8 @@ public final class EchoTTSModel: SpeechGenerationModel, @unchecked Sendable {
         let weights = try loadArrays(url: weightsURL)
         let sanitizedWeights = sanitize(weights, config: config)
 
-        try model.model.update(
-            parameters: ModuleParameters.unflattened(sanitizedWeights),
-            verify: .none
-        )
+        let unflattened = ModuleParameters.unflattened(sanitizedWeights)
+        try model.model.update(parameters: unflattened, verify: .none)
         eval(model.model)
 
         // Load PCA state
@@ -136,9 +147,13 @@ public final class EchoTTSModel: SpeechGenerationModel, @unchecked Sendable {
         }
 
         // Prepare text
-        let (textTokens, textMask, _) = echoGetTextInputIdsAndMask(
+        let (textTokens, textMask, normalizedTexts) = echoGetTextInputIdsAndMask(
             [text], maxLength: config.maxTextLength, normalize: config.normalizeText
         )
+        eval(textTokens, textMask)
+        print("[EchoTTS] Normalized text: \(normalizedTexts)")
+        print("[EchoTTS] Text tokens shape: \(textTokens.shape), first 20: \(textTokens[0, ..<min(20, textTokens.dim(1))].asArray(Int32.self))")
+        print("[EchoTTS] Sampler config: numSteps=\(config.sampler.numSteps), cfgText=\(config.sampler.cfgScaleText), cfgSpeaker=\(config.sampler.cfgScaleSpeaker), kvScale=\(String(describing: config.sampler.speakerKvScale))")
 
         // Prepare speaker latent
         let speakerLatent: MLXArray
@@ -146,22 +161,31 @@ public final class EchoTTSModel: SpeechGenerationModel, @unchecked Sendable {
 
         if let ref = refAudio {
             // ref: expected shape [samples] or [1, samples] or [1, 1, samples]
-            var refNCL = ref
-            if refNCL.ndim == 1 {
-                refNCL = refNCL.reshaped([1, 1, -1])
-            } else if refNCL.ndim == 2 {
-                refNCL = refNCL.expandedDimensions(axis: 0)
+            var refAudioInput = ref
+            if refAudioInput.ndim == 1 {
+                // [samples] -> [1, samples] (Python: audio = audio[None, :])
+                refAudioInput = refAudioInput.expandedDimensions(axis: 0)
             }
+            if refAudioInput.ndim == 2 && refAudioInput.dim(0) > 1 {
+                // Multi-channel: average to mono
+                refAudioInput = MLX.mean(refAudioInput, axis: 0, keepDims: true)
+            }
+            // Now: [1, samples]
+            print("[EchoTTS] Reference audio shape: \(refAudioInput.shape)")
             (speakerLatent, speakerMask) = echoGetSpeakerLatentAndMask(
-                fishAE: fishAE, pcaState: pcaState, audio: refNCL, config: config
+                fishAE: fishAE, pcaState: pcaState, audio: refAudioInput, config: config
             )
         } else {
-            // Default: zero speaker latent
+            // Default: zero speaker latent (Python: mx.zeros((1, speaker_patch_size, latent_size)))
             let patchSize = config.dit.speakerPatchSize
-            let defaultLen = patchSize * 4  // Small default length
-            speakerLatent = MLXArray.zeros([1, defaultLen, config.dit.latentSize])
-            speakerMask = MLXArray.zeros([1, defaultLen])
+            speakerLatent = MLXArray.zeros([1, patchSize, config.dit.latentSize])
+            // Python: speaker_mask = mx.zeros((1, speaker_latent.shape[1]), dtype=mx.bool_)
+            speakerMask = MLXArray.zeros([1, patchSize], type: Bool.self)
         }
+
+        eval(speakerLatent, speakerMask)
+        print("[EchoTTS] Speaker latent: shape=\(speakerLatent.shape), min=\(speakerLatent.min().item(Float.self)), max=\(speakerLatent.max().item(Float.self)), mean=\(MLX.mean(speakerLatent).item(Float.self))")
+        print("[EchoTTS] Speaker mask: shape=\(speakerMask.shape), true_count=\(MLX.sum(speakerMask.asType(.int32)).item(Int32.self))")
 
         // Generate latents via diffusion sampling
         let latents = echoSampleEulerCFG(
@@ -170,23 +194,35 @@ public final class EchoTTSModel: SpeechGenerationModel, @unchecked Sendable {
             textMask: textMask,
             speakerLatent: speakerLatent,
             speakerMask: speakerMask,
-            config: config
+            config: config,
+            rngSeed: 0
         )
 
-        // Detect silence/flattening
-        let flatPoint = echoFindFlatteningPoint(latents)
+        eval(latents)
+        print("[EchoTTS] Latent output: shape=\(latents.shape), min=\(latents.min().item(Float.self)), max=\(latents.max().item(Float.self))")
+
+        // Check flattening point
+        let flatPoint = echoFindFlatteningPoint(latents[0])
+        print("[EchoTTS] Flattening point: \(flatPoint) frames = \(Double(flatPoint) * 2048.0 / 44100.0)s")
 
         // Decode latents to audio
-        var audio = echoAEDecode(fishAE: fishAE, pcaState: pcaState, zQ: latents)
+        let audioOut = echoAEDecode(fishAE: fishAE, pcaState: pcaState, zQ: latents)
 
-        // Crop at flattening point
-        audio = echoCropAudioToFlatteningPoint(
-            audio: audio, flatteningPoint: flatPoint,
-            downsampleFactor: config.audioDownsampleFactor
+        eval(audioOut)
+        print("[EchoTTS] Raw audio: shape=\(audioOut.shape)")
+
+        // Crop at flattening point (Python: crop_audio_to_flattening_point(audio_out, latent_out[0]))
+        let croppedAudio = echoCropAudioToFlatteningPoint(
+            audio: audioOut, latent: latents[0]  // latents[0] is [T, latentSize]
         )
 
-        // Return as 1D audio: [samples]
-        return audio.reshaped([-1])
+        eval(croppedAudio)
+        let finalAudio = croppedAudio[0, 0]
+        let durationSec = Double(finalAudio.dim(0)) / 44100.0
+        print("[EchoTTS] Final audio: \(finalAudio.dim(0)) samples = \(durationSec)s")
+
+        // Return as 1D audio: [samples] (Python: audio = audio_out[0, 0])
+        return finalAudio
     }
 
     // MARK: - Generate Stream
