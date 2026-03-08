@@ -41,13 +41,15 @@ func echoLoadPCAState(from url: URL) throws -> EchoPCAState {
 /// Input: [B, 1, T]. Returns [B, T_ds, latentSize].
 func echoAEEncode(fishAE: FishS1DAC, pcaState: EchoPCAState, audio: MLXArray) -> MLXArray {
     // Fish encode_zq: [B, 1, T] -> [B, 1024, T_ds]
-    let zQ = fishAE.encodeZQ(audio)  // NCL
+    // Python: fish_ae.encode_zq(audio).astype(mx.float32)
+    let zQ = fishAE.encodeZQ(audio).asType(.float32)  // NCL
 
     // NCL -> NLC
     var z = zQ.transposed(0, 2, 1)  // [B, T_ds, 1024]
 
     // PCA transform: (z - mean) @ components.T * scale
-    z = MLX.matmul(z - pcaState.pcaMean, pcaState.pcaComponents.transposed(0, 1))
+    // components is [80, 1024]; we need [1024, 80] for the matmul
+    z = MLX.matmul(z - pcaState.pcaMean, pcaState.pcaComponents.transposed(1, 0))
     z = z * pcaState.latentScale
 
     return z  // [B, T_ds, latentSize=80]
@@ -64,38 +66,42 @@ func echoAEDecode(fishAE: FishS1DAC, pcaState: EchoPCAState, zQ: MLXArray) -> ML
     z = z.transposed(0, 2, 1)  // [B, 1024, T_ds]
 
     // Fish decode_zq: [B, 1024, T_ds] -> [B, 1, T]
-    return fishAE.decodeZQ(z)
+    // Python: fish_ae.decode_zq(z_q.astype(mx.float32)).astype(mx.float32)
+    return fishAE.decodeZQ(z.asType(.float32)).asType(.float32)
 }
 
 // MARK: - Silence Detection
 
 /// Find the point where generated latents flatten to zero (silence).
-/// Returns the frame index, or nil if no flattening detected.
-func echoFindFlatteningPoint(_ latents: MLXArray, windowSize: Int = 20, threshold: Float = 0.05) -> Int? {
-    // latents: [B, T, latentSize] - use first batch
-    let seqLen = latents.dim(1)
-    guard seqLen > windowSize else { return nil }
+/// Input: latent [T, latentSize] (single sequence, not batched - matching Python).
+/// Returns the frame index where silence starts.
+func echoFindFlatteningPoint(_ latent: MLXArray, windowSize: Int = 20, stdThreshold: Float = 0.05) -> Int {
+    let seqLen = latent.dim(0)
+    // Pad with zeros at end (Python does this)
+    let padded = MLX.concatenated([
+        latent,
+        MLXArray.zeros([windowSize, latent.dim(-1)])
+    ], axis: 0)
 
-    for i in 0..<(seqLen - windowSize) {
-        let window = latents[0, i..<(i + windowSize), 0...]
-        let stdVal = MLX.std(window).item(Float.self)
-        let meanVal = MLX.abs(MLX.mean(window)).item(Float.self)
-        if stdVal < threshold && meanVal < threshold {
+    let paddedLen = padded.dim(0)
+    for i in 0..<(paddedLen - windowSize) {
+        let window = padded[i..<(i + windowSize)]
+        let stdVal = Float(MLX.std(window).item(Float.self))
+        let meanVal = abs(Float(MLX.mean(window).item(Float.self)))
+        if stdVal < stdThreshold && meanVal < 0.1 {
             return i
         }
     }
-    return nil
+    return seqLen
 }
 
 /// Crop audio at the flattening point.
-func echoCropAudioToFlatteningPoint(
-    audio: MLXArray, flatteningPoint: Int?, downsampleFactor: Int
-) -> MLXArray {
-    guard let point = flatteningPoint else { return audio }
-    let samplePoint = point * downsampleFactor
-    let audioLength = audio.dim(-1)
-    if samplePoint > 0 && samplePoint < audioLength {
-        return audio[0..., 0..., ..<samplePoint]
+/// Python: audio[..., :flattening_point * 2048]
+func echoCropAudioToFlatteningPoint(audio: MLXArray, latent: MLXArray) -> MLXArray {
+    let flatteningPoint = echoFindFlatteningPoint(latent)
+    let cropSamples = flatteningPoint * 2048
+    if cropSamples > 0 && cropSamples < audio.dim(-1) {
+        return audio[0..., 0..., ..<cropSamples]
     }
     return audio
 }
@@ -103,64 +109,68 @@ func echoCropAudioToFlatteningPoint(
 // MARK: - Speaker Latent Extraction
 
 /// Extract speaker latent from reference audio.
-/// Input: reference audio [1, 1, T].
+/// Input: reference audio [1, samples] (2D, matching Python).
 /// Returns (speakerLatent [1, T_latent, latentSize], mask [1, T_latent]).
 func echoGetSpeakerLatentAndMask(
     fishAE: FishS1DAC, pcaState: EchoPCAState, audio: MLXArray, config: EchoTTSConfig
 ) -> (MLXArray, MLXArray) {
-    let maxSamples = config.maxSpeakerLatentLength * config.audioDownsampleFactor
-    let chunkSamples = config.sampler.sequenceLength * config.audioDownsampleFactor
+    let aeDownsampleFactor = 2048
+    let maxAudioLen = config.maxSpeakerLatentLength * aeDownsampleFactor
+    let audioChunkSize = config.sampler.sequenceLength * aeDownsampleFactor
 
-    // Limit audio length
+    // audio: [1, samples] - limit length
     var refAudio = audio
-    if refAudio.dim(-1) > maxSamples {
-        refAudio = refAudio[0..., 0..., ..<maxSamples]
+    if refAudio.dim(1) > maxAudioLen {
+        refAudio = refAudio[0..., ..<maxAudioLen]
     }
 
-    let totalSamples = refAudio.dim(-1)
-    var allLatents: [MLXArray] = []
+    let totalSamples = refAudio.dim(1)
+    var latentArr: [MLXArray] = []
 
-    // Process in chunks
-    var start = 0
-    while start < totalSamples {
-        let end = min(start + chunkSamples, totalSamples)
-        let chunk = refAudio[0..., 0..., start..<end]
+    // Process in chunks (Python: for i in range(0, audio.shape[1], audio_chunk_size))
+    var i = 0
+    while i < totalSamples {
+        let end = min(i + audioChunkSize, totalSamples)
+        var audioChunk = refAudio[0..., i..<end]
 
         // Pad chunk if needed
-        var paddedChunk = chunk
-        if chunk.dim(-1) < chunkSamples {
-            let padAmount = chunkSamples - chunk.dim(-1)
-            paddedChunk = MLX.padded(chunk, widths: [.init(0), .init(0), .init((0, padAmount))])
+        if audioChunk.dim(1) < audioChunkSize {
+            let pad = audioChunkSize - audioChunk.dim(1)
+            audioChunk = MLX.padded(audioChunk, widths: [.init(0), .init((0, pad))])
         }
 
-        let latent = echoAEEncode(fishAE: fishAE, pcaState: pcaState, audio: paddedChunk)
-        allLatents.append(latent)
-        start = end
+        // Python: ae_encode expects [B, 1, samples], so audio_chunk[:, None, :]
+        let audioChunk3D = audioChunk.expandedDimensions(axis: 1)  // [1, 1, samples]
+        let latentChunk = echoAEEncode(fishAE: fishAE, pcaState: pcaState, audio: audioChunk3D)
+        latentArr.append(latentChunk)
+        i = end
     }
 
     // Concatenate all latent chunks
-    var speakerLatent = MLX.concatenated(allLatents, axis: 1)  // [1, totalFrames, latentSize]
+    var speakerLatent = latentArr.isEmpty
+        ? MLXArray.zeros([1, 0, 80])
+        : MLX.concatenated(latentArr, axis: 1)
 
-    // Trim to actual length (remove padding from last chunk)
-    let actualFrames = totalSamples / config.audioDownsampleFactor
-    if speakerLatent.dim(1) > actualFrames {
-        speakerLatent = speakerLatent[0..., ..<actualFrames, 0...]
-    }
+    // Compute actual latent length
+    let actualLatentLength = totalSamples / aeDownsampleFactor
 
-    // Create mask
+    // Create mask using arange (Python: mx.arange(speaker_latent.shape[1]) < actual_latent_length)
     let latentLen = speakerLatent.dim(1)
-    let mask = MLXArray.ones([1, latentLen])
+    let arangeArr = MLXArray(Array(0..<Int32(latentLen))).reshaped([1, latentLen])
+    let speakerMask = arangeArr .< MLXArray(Int32(actualLatentLength))
 
-    // Ensure divisible by speaker_patch_size
+    // Trim to actual length (Python: speaker_latent = speaker_latent[:, :actual_latent_length])
+    speakerLatent = speakerLatent[0..., ..<actualLatentLength, 0...]
+    let trimmedMask = speakerMask[0..., ..<actualLatentLength]
+
+    // Truncate to multiple of patch_size (Python: limit = (len // patch_size) * patch_size)
     let patchSize = config.dit.speakerPatchSize
-    let remainder = latentLen % patchSize
-    if remainder != 0 {
-        let padFrames = patchSize - remainder
-        speakerLatent = MLX.padded(speakerLatent, widths: [.init(0), .init((0, padFrames)), .init(0)])
-        let maskPad = MLXArray.zeros([1, padFrames])
-        let newMask = MLX.concatenated([mask, maskPad], axis: 1)
-        return (speakerLatent, newMask)
+    if speakerLatent.dim(1) > 0 {
+        let limit = (speakerLatent.dim(1) / patchSize) * patchSize
+        if limit > 0 {
+            return (speakerLatent[0..., ..<limit, 0...], trimmedMask[0..., ..<limit])
+        }
     }
 
-    return (speakerLatent, mask)
+    return (speakerLatent, trimmedMask)
 }

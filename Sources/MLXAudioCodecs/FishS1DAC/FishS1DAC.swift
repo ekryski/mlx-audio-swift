@@ -105,19 +105,22 @@ public class FishS1DAC: Module {
     // MARK: - Weight Sanitization
 
     /// Sanitize weights from PyTorch format.
-    /// Converts weight normalization parametrization names.
+    /// - Converts weight normalization parametrization names
+    /// - Remaps decoder.model.{N} numbered keys to named keys (conv_in, blocks, snake_out, conv_out)
+    /// - Remaps encoder.block.{N} numbered keys to named keys (conv_in, blocks, snake_out, conv_out)
+    /// - Skips non-parameter keys (causal_mask, freqs_cis)
     public static func sanitize(_ weights: [String: MLXArray]) -> [String: MLXArray] {
         var sanitized: [String: MLXArray] = [:]
 
         for (key, value) in weights {
+            // Skip non-parameter keys
+            if key.contains("causal_mask") || key.contains("freqs_cis") {
+                continue
+            }
+
             var newKey = key
 
-            // PyTorch weight normalization parametrization remapping
-            // .conv.parametrizations.weight.original0 -> .conv.weight_g
-            // .conv.parametrizations.weight.original1 -> .conv.weight_v
-            // .parametrizations.weight.original0 -> .weight_g
-            // .parametrizations.weight.original1 -> .weight_v
-
+            // 1) PyTorch weight normalization parametrization remapping
             if newKey.contains(".parametrizations.weight.original0") {
                 newKey = newKey.replacingOccurrences(
                     of: ".parametrizations.weight.original0",
@@ -130,14 +133,153 @@ public class FishS1DAC: Module {
                 )
             }
 
-            // Lift .conv.bias up when using WN wrapper
-            // e.g., encoder.blocks.0.res_units.0.block.0.conv.bias
-            // The Python WN wrapper has conv.bias, but in Swift the bias is at the WN level
+            // 2) Decoder key remapping: decoder.model.{N}.xxx -> decoder.{named}.xxx
+            if newKey.hasPrefix("decoder.model.") {
+                newKey = remapDecoderKey(newKey)
+            }
+
+            // 3) Encoder key remapping: encoder.block.{N}.xxx -> encoder.{named}.xxx
+            if newKey.hasPrefix("encoder.block.") {
+                newKey = remapEncoderKey(newKey)
+            }
+
+            // Quantizer keys already match Swift structure (no remapping needed)
 
             sanitized[newKey] = value
         }
 
         return sanitized
+    }
+
+    // MARK: - Decoder Key Remapping
+
+    /// Remap decoder.model.{N}.xxx to decoder.{named}.xxx
+    /// Python nn.Sequential indices:
+    ///   0 = CausalWNConv1d (conv_in)
+    ///   1-4 = DecoderBlock (blocks.0-3)
+    ///   5 = Snake1d (snake_out)
+    ///   6 = CausalWNConv1d (conv_out)
+    private static func remapDecoderKey(_ key: String) -> String {
+        let prefix = "decoder.model."
+        let afterPrefix = String(key.dropFirst(prefix.count))
+
+        guard let dotIdx = afterPrefix.firstIndex(of: ".") else { return key }
+        guard let modelIdx = Int(afterPrefix[afterPrefix.startIndex..<dotIdx]) else { return key }
+        let rest = String(afterPrefix[afterPrefix.index(after: dotIdx)...])
+
+        switch modelIdx {
+        case 0:
+            return "decoder.conv_in.\(rest)"
+        case 1, 2, 3, 4:
+            let blockIdx = modelIdx - 1
+            return remapDecoderBlockKey(blockIdx: blockIdx, rest: rest)
+        case 5:
+            return "decoder.snake_out.\(rest)"
+        case 6:
+            return "decoder.conv_out.\(rest)"
+        default:
+            return key
+        }
+    }
+
+    /// Remap decoder block sub-keys.
+    /// Python DecoderBlock.block is nn.Sequential:
+    ///   0 = Snake1d (snake)
+    ///   1 = CausalWNConvTranspose1d (conv)
+    ///   2-4 = ResidualUnit (res_units.0-2)
+    private static func remapDecoderBlockKey(blockIdx: Int, rest: String) -> String {
+        let blockPrefix = "block."
+        guard rest.hasPrefix(blockPrefix) else {
+            return "decoder.blocks.\(blockIdx).\(rest)"
+        }
+        let afterBlock = String(rest.dropFirst(blockPrefix.count))
+
+        guard let dotIdx = afterBlock.firstIndex(of: ".") else {
+            // Leaf key like "block.0" — shouldn't happen but handle gracefully
+            return "decoder.blocks.\(blockIdx).\(rest)"
+        }
+        guard let subIdx = Int(afterBlock[afterBlock.startIndex..<dotIdx]) else {
+            return "decoder.blocks.\(blockIdx).\(rest)"
+        }
+        let rest2 = String(afterBlock[afterBlock.index(after: dotIdx)...])
+
+        switch subIdx {
+        case 0:
+            return "decoder.blocks.\(blockIdx).snake.\(rest2)"
+        case 1:
+            return "decoder.blocks.\(blockIdx).conv.\(rest2)"
+        case 2, 3, 4:
+            let resIdx = subIdx - 2
+            return "decoder.blocks.\(blockIdx).res_units.\(resIdx).\(rest2)"
+        default:
+            return "decoder.blocks.\(blockIdx).\(rest)"
+        }
+    }
+
+    // MARK: - Encoder Key Remapping
+
+    /// Remap encoder.block.{N}.xxx to encoder.{named}.xxx
+    /// Python nn.Sequential indices:
+    ///   0 = CausalWNConv1d (conv_in)
+    ///   1-4 = EncoderBlock (blocks.0-3)
+    ///   5 = Snake1d (snake_out)
+    ///   6 = CausalWNConv1d (conv_out)
+    private static func remapEncoderKey(_ key: String) -> String {
+        let prefix = "encoder.block."
+        let afterPrefix = String(key.dropFirst(prefix.count))
+
+        guard let dotIdx = afterPrefix.firstIndex(of: ".") else { return key }
+        guard let blockIdx = Int(afterPrefix[afterPrefix.startIndex..<dotIdx]) else { return key }
+        let rest = String(afterPrefix[afterPrefix.index(after: dotIdx)...])
+
+        switch blockIdx {
+        case 0:
+            return "encoder.conv_in.\(rest)"
+        case 1, 2, 3, 4:
+            let encBlockIdx = blockIdx - 1
+            return remapEncoderBlockKey(blockIdx: encBlockIdx, rest: rest)
+        case 5:
+            return "encoder.snake_out.\(rest)"
+        case 6:
+            return "encoder.conv_out.\(rest)"
+        default:
+            return key
+        }
+    }
+
+    /// Remap encoder block sub-keys.
+    /// Python EncoderBlock.block is nn.Sequential:
+    ///   0-2 = ResidualUnit (res_units.0-2)
+    ///   3 = Snake1d (snake)
+    ///   4 = CausalWNConv1d (conv)
+    ///   5 = WindowLimitedTransformer (transformer) — only in block 3
+    private static func remapEncoderBlockKey(blockIdx: Int, rest: String) -> String {
+        let blockPrefix = "block."
+        guard rest.hasPrefix(blockPrefix) else {
+            return "encoder.blocks.\(blockIdx).\(rest)"
+        }
+        let afterBlock = String(rest.dropFirst(blockPrefix.count))
+
+        guard let dotIdx = afterBlock.firstIndex(of: ".") else {
+            return "encoder.blocks.\(blockIdx).\(rest)"
+        }
+        guard let subIdx = Int(afterBlock[afterBlock.startIndex..<dotIdx]) else {
+            return "encoder.blocks.\(blockIdx).\(rest)"
+        }
+        let rest2 = String(afterBlock[afterBlock.index(after: dotIdx)...])
+
+        switch subIdx {
+        case 0, 1, 2:
+            return "encoder.blocks.\(blockIdx).res_units.\(subIdx).\(rest2)"
+        case 3:
+            return "encoder.blocks.\(blockIdx).snake.\(rest2)"
+        case 4:
+            return "encoder.blocks.\(blockIdx).conv.\(rest2)"
+        case 5:
+            return "encoder.blocks.\(blockIdx).transformer.\(rest2)"
+        default:
+            return "encoder.blocks.\(blockIdx).\(rest)"
+        }
     }
 
     // MARK: - Load from Pretrained
@@ -182,9 +324,10 @@ public class FishS1DAC: Module {
         }
 
         let sanitizedWeights = sanitize(weights)
+
         try model.update(
             parameters: ModuleParameters.unflattened(sanitizedWeights),
-            verify: .none
+            verify: .noUnusedKeys
         )
 
         eval(model.parameters())

@@ -27,7 +27,7 @@ public class FishVectorQuantize: Module {
     }
 
     /// Encode input to nearest codebook indices using cosine distance.
-    /// Input: NCL format. Returns (z_q in NCL, indices).
+    /// Input: NCL format. Returns (z_q in NCL at inputDim, indices).
     public func encode(_ z: MLXArray) -> (MLXArray, MLXArray) {
         // Project to codebook dim
         let zE = inProj(z)  // [B, codebookDim, T]
@@ -42,16 +42,19 @@ public class FishVectorQuantize: Module {
 
         // Distance: 1 - cosine_similarity
         // cosine_sim = z_norm @ cb_norm.T
-        let sim = MLX.matmul(zNorm, cbNorm.transposed(0, 1))
+        let sim = MLX.matmul(zNorm, cbNorm.transposed(1, 0))
         let indices = MLX.argMax(sim, axis: -1)  // [B, T]
 
         // Look up codebook
         let zQ = codebook(indices)  // [B, T, codebookDim]
 
         // NLC -> NCL
-        let zQNCL = zQ.transposed(0, 2, 1)
+        let zQNCL = zQ.transposed(0, 2, 1)  // [B, codebookDim, T]
 
-        return (zQNCL, indices)
+        // Project back to input dim so residuals can be computed in input space
+        let decoded = outProj(zQNCL)  // [B, inputDim, T]
+
+        return (decoded, indices)
     }
 
     /// Decode codebook indices back to input space.

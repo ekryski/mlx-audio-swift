@@ -27,6 +27,9 @@ public struct EchoDiTConfig: Decodable {
     public var timestepEmbedSize: Int
     public var adalnRank: Int
 
+    // Normalization
+    public var normEps: Float
+
     enum CodingKeys: String, CodingKey {
         case latentSize = "latent_size"
         case modelSize = "model_size"
@@ -45,6 +48,7 @@ public struct EchoDiTConfig: Decodable {
         case speakerIntermediateSize = "speaker_intermediate_size"
         case timestepEmbedSize = "timestep_embed_size"
         case adalnRank = "adaln_rank"
+        case normEps = "norm_eps"
     }
 
     public init(from jsonDecoder: any Swift.Decoder) throws {
@@ -66,6 +70,7 @@ public struct EchoDiTConfig: Decodable {
         speakerIntermediateSize = (try? c.decode(Int.self, forKey: CodingKeys.speakerIntermediateSize)) ?? 3328
         timestepEmbedSize = (try? c.decode(Int.self, forKey: CodingKeys.timestepEmbedSize)) ?? 512
         adalnRank = (try? c.decode(Int.self, forKey: CodingKeys.adalnRank)) ?? 256
+        normEps = (try? c.decode(Float.self, forKey: CodingKeys.normEps)) ?? 1e-5
     }
 
     public init() {
@@ -86,6 +91,7 @@ public struct EchoDiTConfig: Decodable {
         speakerIntermediateSize = 3328
         timestepEmbedSize = 512
         adalnRank = 256
+        normEps = 1e-5
     }
 }
 
@@ -137,15 +143,18 @@ public struct EchoSamplerConfig: Decodable {
     }
 
     public init() {
-        numSteps = 40
+        numSteps = 30
         cfgScaleText = 3.0
-        cfgScaleSpeaker = 8.0
+        cfgScaleSpeaker = 5.0
         cfgMinT = 0.5
         cfgMaxT = 1.0
         sequenceLength = 640
         truncationFactor = 0.96
         rescaleK = nil
         rescaleSigma = nil
+        // Speaker KV scaling disabled by default. Enabling it (e.g. 1.5) combined
+        // with cfg_scale_speaker >= 5.0 causes over-conditioning that produces
+        // extremely long, slow-motion outputs. Only enable with low cfg_scale_speaker (~3.0).
         speakerKvScale = nil
         speakerKvMaxLayers = nil
         speakerKvMinT = nil

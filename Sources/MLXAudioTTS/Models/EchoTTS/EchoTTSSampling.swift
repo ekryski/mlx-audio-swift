@@ -17,11 +17,12 @@ func echoConcatKVCaches(_ caches: [EchoKVCache]) -> EchoKVCache {
 
 /// Multiply (scale) KV cache values.
 func echoMultiplyKVCache(_ cache: EchoKVCache, scale: Float, maxLayers: Int? = nil) -> EchoKVCache {
-    cache.enumerated().map { (i, kv) in
-        if let maxL = maxLayers, i >= maxL {
-            return kv
+    let numLayers = maxLayers != nil ? min(maxLayers!, cache.count) : cache.count
+    return cache.enumerated().map { (i, kv) in
+        if i < numLayers {
+            return (kv.0 * scale, kv.1 * scale)  // Scale both K and V (matching Python)
         }
-        return (kv.0, kv.1 * scale)
+        return kv
     }
 }
 
@@ -62,103 +63,98 @@ func echoSampleEulerCFG(
     if let seed = rngSeed {
         MLXRandom.seed(seed)
     }
-    var xT = MLXRandom.normal([batchSize, seqLen, latentSize]) * samplerConfig.truncationFactor
 
-    // Build text KV cache (conditional + unconditional)
-    let textKVCond = model.getKVCacheText(textTokens, mask: textMask)
-
-    // Unconditional text: zeros with no mask
-    let uncondTextTokens = MLXArray.zeros(like: textTokens)
-    let uncondTextMask = MLXArray.zeros(like: textMask)
-    let textKVUncond = model.getKVCacheText(uncondTextTokens, mask: uncondTextMask)
-
-    // Build speaker KV cache (conditional + unconditional)
-    let speakerKVCond = model.getKVCacheSpeaker(speakerLatent, mask: speakerMask)
-
-    // Unconditional speaker: zeros with no mask
-    let uncondSpeakerLatent = MLXArray.zeros(like: speakerLatent)
-    let uncondSpeakerMask = MLXArray.zeros(like: speakerMask)
-    let speakerKVUncond = model.getKVCacheSpeaker(uncondSpeakerLatent, mask: uncondSpeakerMask)
-
-    // Triple the KV caches: [cond, uncond_text, uncond_speaker]
-    let textKV3 = echoConcatKVCaches([textKVCond, textKVUncond, textKVCond])
-    let speakerKV3 = echoConcatKVCaches([speakerKVCond, speakerKVCond, speakerKVUncond])
-
-    // Triple masks
-    let textMask3 = MLX.concatenated([textMask, uncondTextMask, textMask], axis: 0)
-    let speakerMask3 = MLX.concatenated([speakerMask, speakerMask, uncondSpeakerMask], axis: 0)
-
-    // Linear time schedule: t = 0.999 -> 0
-    var timeSteps: [Float] = []
-    for i in 0..<numSteps {
-        timeSteps.append(0.999 - Float(i) * 0.999 / Float(numSteps))
+    // Time schedule using numpy-style linspace (matching Python)
+    var tSchedule = [Float](repeating: 0, count: numSteps + 1)
+    for i in 0...numSteps {
+        tSchedule[i] = 0.999 * (1.0 - Float(i) / Float(numSteps))
     }
-    timeSteps.append(0.0)
+
+    // Unconditional masks (zeros = don't attend)
+    let textMaskUncond = MLXArray.zeros(like: textMask)
+    let speakerMaskUncond = MLXArray.zeros(like: speakerMask)
+
+    // Build KV caches ONCE (Python: same conditional KV for all 3 branches!)
+    let textKVCond = model.getKVCacheText(textTokens, mask: textMask)
+    var speakerKVCond = model.getKVCacheSpeaker(speakerLatent)
+
+    // Apply speaker KV scaling upfront if configured (Python does this before the loop)
+    if let kvScale = samplerConfig.speakerKvScale {
+        speakerKVCond = echoMultiplyKVCache(
+            speakerKVCond, scale: kvScale,
+            maxLayers: samplerConfig.speakerKvMaxLayers
+        )
+    }
+
+    // Triple KV caches: SAME conditional KV for all 3 branches (Python style!)
+    let textKVFull = echoConcatKVCaches([textKVCond, textKVCond, textKVCond])
+    var speakerKVFull = echoConcatKVCaches([speakerKVCond, speakerKVCond, speakerKVCond])
+
+    // Triple masks: [cond_text, uncond_text, cond_text] and [cond_spk, cond_spk, uncond_spk]
+    let fullTextMask = MLX.concatenated([textMask, textMaskUncond, textMask], axis: 0)
+    let fullSpeakerMask = MLX.concatenated([speakerMask, speakerMask, speakerMaskUncond], axis: 0)
+
+    var xT = MLXRandom.normal([batchSize, seqLen, latentSize]) * samplerConfig.truncationFactor
 
     // Euler integration
     for step in 0..<numSteps {
-        let t = timeSteps[step]
-        let tNext = timeSteps[step + 1]
-        let dt = tNext - t
+        let t = tSchedule[step]
+        let tNext = tSchedule[step + 1]
+        let hasCFG = t >= samplerConfig.cfgMinT && t <= samplerConfig.cfgMaxT
 
-        let useCFG = t >= samplerConfig.cfgMinT && t <= samplerConfig.cfgMaxT
+        var vPred: MLXArray
 
-        // Apply speaker KV scaling if configured
-        var currentSpeakerKV = speakerKV3
-        if let kvScale = samplerConfig.speakerKvScale,
-           let kvMinT = samplerConfig.speakerKvMinT,
-           t >= kvMinT {
-            currentSpeakerKV = echoMultiplyKVCache(
-                speakerKV3, scale: kvScale,
-                maxLayers: samplerConfig.speakerKvMaxLayers
-            )
-        }
-
-        if useCFG {
-            // Triple the batch for CFG
+        if hasCFG {
             let xTriple = MLX.concatenated([xT, xT, xT], axis: 0)
-            let tArray = MLXArray(Array(repeating: t, count: batchSize * 3))
+            let tFull = MLXArray(Array(repeating: t, count: batchSize * 3))
 
             let vAll = model(
                 xTriple,
-                timestep: tArray,
-                textKVCache: textKV3,
-                speakerKVCache: currentSpeakerKV,
-                textMask: textMask3,
-                speakerMask: speakerMask3
+                timestep: tFull,
+                textKVCache: textKVFull,
+                speakerKVCache: speakerKVFull,
+                textMask: fullTextMask,
+                speakerMask: fullSpeakerMask
             )
 
-            // Split predictions
+            // Split: [cond, uncond_text, uncond_speaker]
             let vCond = vAll[..<batchSize, 0..., 0...]
             let vUncondText = vAll[batchSize..<(2 * batchSize), 0..., 0...]
             let vUncondSpeaker = vAll[(2 * batchSize)..., 0..., 0...]
 
-            // Independent guidance
-            var vPred = vCond
+            vPred = vCond
                 + samplerConfig.cfgScaleText * (vCond - vUncondText)
                 + samplerConfig.cfgScaleSpeaker * (vCond - vUncondSpeaker)
-
-            // Optional temporal rescaling
-            if let rescaleK = samplerConfig.rescaleK,
-               let rescaleSigma = samplerConfig.rescaleSigma {
-                vPred = echoTemporalScoreRescale(vPred, t: t, rescaleK: rescaleK, rescaleSigma: rescaleSigma)
-            }
-
-            xT = xT + vPred * dt
         } else {
-            // No CFG: just conditional pass
-            let tArray = MLXArray(Array(repeating: t, count: batchSize))
-            let vPred = model(
+            let tCond = MLXArray(Array(repeating: t, count: batchSize))
+            vPred = model(
                 xT,
-                timestep: tArray,
+                timestep: tCond,
                 textKVCache: textKVCond,
                 speakerKVCache: speakerKVCond,
                 textMask: textMask,
                 speakerMask: speakerMask
             )
-            xT = xT + vPred * dt
         }
 
+        // Temporal rescaling
+        if let rescaleK = samplerConfig.rescaleK,
+           let rescaleSigma = samplerConfig.rescaleSigma {
+            vPred = echoTemporalScoreRescale(vPred, t: t, rescaleK: rescaleK, rescaleSigma: rescaleSigma)
+        }
+
+        // Speaker KV scale crossover (Python undoes scaling at boundary)
+        if let kvScale = samplerConfig.speakerKvScale,
+           let kvMinT = samplerConfig.speakerKvMinT,
+           tNext < kvMinT && t >= kvMinT {
+            speakerKVCond = echoMultiplyKVCache(
+                speakerKVCond, scale: 1.0 / kvScale,
+                maxLayers: samplerConfig.speakerKvMaxLayers
+            )
+            speakerKVFull = echoConcatKVCaches([speakerKVCond, speakerKVCond, speakerKVCond])
+        }
+
+        xT = xT + vPred * (tNext - t)
         eval(xT)
     }
 
@@ -194,10 +190,10 @@ func echoSampleBlockwiseEulerCFG(
     let uncondTextMask = MLXArray.zeros(like: textMask)
     let textKVUncond = model.getKVCacheText(uncondTextTokens, mask: uncondTextMask)
 
-    let speakerKVCond = model.getKVCacheSpeaker(speakerLatent, mask: speakerMask)
+    let speakerKVCond = model.getKVCacheSpeaker(speakerLatent)
     let uncondSpeakerLatent = MLXArray.zeros(like: speakerLatent)
     let uncondSpeakerMask = MLXArray.zeros(like: speakerMask)
-    let speakerKVUncond = model.getKVCacheSpeaker(uncondSpeakerLatent, mask: uncondSpeakerMask)
+    let speakerKVUncond = model.getKVCacheSpeaker(uncondSpeakerLatent)
 
     let textKV3 = echoConcatKVCaches([textKVCond, textKVUncond, textKVCond])
     let speakerKV3 = echoConcatKVCaches([speakerKVCond, speakerKVCond, speakerKVUncond])
