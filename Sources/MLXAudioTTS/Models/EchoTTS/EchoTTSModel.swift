@@ -340,6 +340,24 @@ class EchoJointAttention: Module {
         return (k, v)
     }
 
+    /// Build latent prefix KV cache for a layer (blockwise generation).
+    /// Unlike text/speaker KV, latent keys also get half-head RoPE applied.
+    /// Returns [B, seqLen, numHeads, headDim].
+    func getKVCacheLatent(
+        _ latentState: MLXArray, cosFreqs: MLXArray, sinFreqs: MLXArray
+    ) -> (MLXArray, MLXArray) {
+        guard let wkLatent, let wvLatent else {
+            fatalError("Latent KV modules not loaded. Use delete_blockwise_modules=false.")
+        }
+        let bsz = latentState.dim(0)
+        let seqLen = latentState.dim(1)
+        var k = wkLatent(latentState).reshaped([bsz, seqLen, numHeads, headDim])
+        let v = wvLatent(latentState).reshaped([bsz, seqLen, numHeads, headDim])
+        k = kNorm(k)
+        k = applyRotaryHalf(k, cosFreqs: cosFreqs, sinFreqs: sinFreqs)
+        return (k, v)
+    }
+
     /// Apply rotary embeddings to only the first half of heads (Python: _apply_rotary_half).
     /// Input shape: [B, seqLen, numHeads, headDim]
     func applyRotaryHalf(_ y: MLXArray, cosFreqs: MLXArray, sinFreqs: MLXArray) -> MLXArray {
@@ -412,10 +430,10 @@ class EchoJointAttention: Module {
         let selfMaskBool = MLXArray.ones([bsz, seqLen], type: Bool.self)
         var maskParts: [MLXArray] = [selfMaskBool]
 
-        // Latent mask
+        // Latent mask: attend to ALL latent prefix positions (Python: mx.ones)
         if let (lk, _) = latentKV, lk.dim(1) > 0 {
             let latentLen = lk.dim(1)
-            let latentMask = MLXArray.zeros([bsz, latentLen], type: Bool.self)
+            let latentMask = MLXArray.ones([bsz, latentLen], type: Bool.self)
             maskParts.append(latentMask)
         }
 
@@ -739,6 +757,48 @@ public class EchoDiT: Module {
         speakerState = speakerNorm(speakerState)
         return layers.map { layer in
             layer.attention.getKVCacheSpeaker(speakerState)
+        }
+    }
+
+    /// Encode prefix latent (from previous blocks) and build per-layer KV caches.
+    /// Used in blockwise generation for temporal coherence between blocks.
+    /// Python: get_kv_cache_latent(prefix_latent)
+    public func getKVCacheLatent(_ prefixLatent: MLXArray) -> EchoKVCache {
+        guard let latentEncoder, let latentNorm else {
+            fatalError("Latent prefix modules not loaded. Use delete_blockwise_modules=false.")
+        }
+
+        let batchSize = prefixLatent.dim(0)
+
+        // Empty prefix → return empty KV caches
+        if prefixLatent.dim(1) == 0 {
+            return layers.map { layer in
+                (
+                    MLXArray.zeros([batchSize, 0, layer.attention.numHeads, layer.attention.headDim]),
+                    MLXArray.zeros([batchSize, 0, layer.attention.numHeads, layer.attention.headDim])
+                )
+            }
+        }
+
+        // Encode prefix through latent encoder + norm
+        var latentState = latentEncoder(prefixLatent)
+        latentState = latentNorm(latentState)
+
+        // Compute RoPE at latent positions (spaced by speaker_patch_size)
+        // Python: positions = mx.arange(seq_len) * self.speaker_patch_size
+        let seqLen = latentState.dim(1)
+        let headDim = config.modelSize / config.numHeads
+        let maxPos = seqLen * config.speakerPatchSize
+        let (cosAll, sinAll) = echoPrecomputeFreqsCis(dim: headDim, end: maxPos)
+
+        // Index at positions: [0, patchSize, 2*patchSize, ...]
+        let positions = (0..<seqLen).map { Int32($0 * config.speakerPatchSize) }
+        let posArray = MLXArray(positions)
+        let cosLatent = cosAll.take(posArray, axis: 0)
+        let sinLatent = sinAll.take(posArray, axis: 0)
+
+        return layers.map { layer in
+            layer.attention.getKVCacheLatent(latentState, cosFreqs: cosLatent, sinFreqs: sinLatent)
         }
     }
 

@@ -164,19 +164,35 @@ func echoSampleEulerCFG(
 // MARK: - Blockwise Euler CFG Sampling
 
 /// Blockwise sampling that generates audio in chunks with latent prefix context.
+///
+/// Each block is a separate diffusion run over `numSteps`. Previous blocks' latents
+/// are encoded as a latent KV cache for temporal coherence. The `onBlockComplete`
+/// callback fires after each block's diffusion loop with:
+///   - `blockLatent`: this block's completed latent [B, blockSize, latentSize]
+///   - `contextLatent`: concatenated previous blocks [B, prevFrames, latentSize] (nil for first block)
+///
+/// The callback returns `true` to continue generating the next block, or `false`
+/// to stop early (e.g. when silence is detected and remaining blocks would be empty).
+///
+/// Speaker KV scaling is applied fresh at the start of each block and un-done
+/// at the crossover timestep within each block's inner loop.
+///
+/// This overload accepts pre-computed text/speaker KV caches to remove them from
+/// the TTFA critical path (compute them before calling this function).
 func echoSampleBlockwiseEulerCFG(
     model: EchoDiT,
-    textTokens: MLXArray,
+    textKVCond: EchoKVCache,
+    speakerKVCondBase: EchoKVCache,
     textMask: MLXArray,
-    speakerLatent: MLXArray,
     speakerMask: MLXArray,
     blockSizes: [Int],
     config: EchoTTSConfig,
-    rngSeed: UInt64? = nil
+    rngSeed: UInt64? = nil,
+    onBlockComplete: ((_ blockLatent: MLXArray, _ contextLatent: MLXArray?) -> Bool)? = nil
 ) -> MLXArray {
     let samplerConfig = config.sampler
     let ditConfig = config.dit
-    let batchSize = textTokens.dim(0)
+    let batchSize = textMask.dim(0)
     let latentSize = ditConfig.latentSize
     let numSteps = samplerConfig.numSteps
 
@@ -184,84 +200,144 @@ func echoSampleBlockwiseEulerCFG(
         MLXRandom.seed(seed)
     }
 
-    // Build text and speaker KV caches (same as standard)
-    let textKVCond = model.getKVCacheText(textTokens, mask: textMask)
-    let uncondTextTokens = MLXArray.zeros(like: textTokens)
-    let uncondTextMask = MLXArray.zeros(like: textMask)
-    let textKVUncond = model.getKVCacheText(uncondTextTokens, mask: uncondTextMask)
+    // Time schedule (same for every block): linspace(0.999, 0, numSteps+1)
+    var tSchedule = [Float](repeating: 0, count: numSteps + 1)
+    for i in 0...numSteps {
+        tSchedule[i] = 0.999 * (1.0 - Float(i) / Float(numSteps))
+    }
 
-    let speakerKVCond = model.getKVCacheSpeaker(speakerLatent)
-    let uncondSpeakerLatent = MLXArray.zeros(like: speakerLatent)
-    let uncondSpeakerMask = MLXArray.zeros(like: speakerMask)
-    let speakerKVUncond = model.getKVCacheSpeaker(uncondSpeakerLatent)
+    // Unconditional masks (zeros = don't attend)
+    let textMaskUncond = MLXArray.zeros(like: textMask)
+    let speakerMaskUncond = MLXArray.zeros(like: speakerMask)
 
-    let textKV3 = echoConcatKVCaches([textKVCond, textKVUncond, textKVCond])
-    let speakerKV3 = echoConcatKVCaches([speakerKVCond, speakerKVCond, speakerKVUncond])
-    let textMask3 = MLX.concatenated([textMask, uncondTextMask, textMask], axis: 0)
-    let speakerMask3 = MLX.concatenated([speakerMask, speakerMask, uncondSpeakerMask], axis: 0)
+    // Triple text KV cache (constant across blocks, already pre-computed)
+    let textKVFull = echoConcatKVCaches([textKVCond, textKVCond, textKVCond])
 
-    var allBlocks: [MLXArray] = []
+    // Triple masks: [cond_text, uncond_text, cond_text] and [cond_spk, cond_spk, uncond_spk]
+    let fullTextMask = MLX.concatenated([textMask, textMaskUncond, textMask], axis: 0)
+    let fullSpeakerMask = MLX.concatenated([speakerMask, speakerMask, speakerMaskUncond], axis: 0)
 
-    for blockSize in blockSizes {
+    // Speaker KV starts from the base (pre-computed, before any scaling)
+    var speakerKVCond = speakerKVCondBase
+
+    var generatedChunks: [MLXArray] = []
+    var startPos = 0
+
+    for (blockIdx, blockSize) in blockSizes.enumerated() {
+        let blockStart = Date()
+
+        // Apply speaker KV scaling at the start of each block (Python: per-block)
+        // Each block's crossover will un-do this, so next block re-applies.
+        if let kvScale = samplerConfig.speakerKvScale {
+            speakerKVCond = echoMultiplyKVCache(
+                speakerKVCond, scale: kvScale,
+                maxLayers: samplerConfig.speakerKvMaxLayers
+            )
+        }
+        var speakerKVFull = echoConcatKVCaches([speakerKVCond, speakerKVCond, speakerKVCond])
+
+        // Compute latent KV cache from previously generated blocks
+        let prefixLatent: MLXArray
+        if generatedChunks.isEmpty {
+            prefixLatent = MLXArray.zeros([batchSize, 0, latentSize])
+        } else {
+            prefixLatent = MLX.concatenated(generatedChunks, axis: 1)
+        }
+
+        // Triple prefix for CFG (all 3 branches see same latent prefix)
+        let fullPrefixLatent = MLX.concatenated([prefixLatent, prefixLatent, prefixLatent], axis: 0)
+        let latentKVFull = model.getKVCacheLatent(fullPrefixLatent)
+        let latentKVCond: EchoKVCache = latentKVFull.map { (k, v) in
+            (k[..<batchSize], v[..<batchSize])
+        }
+
+        // Initialize noise for this block
         var xT = MLXRandom.normal([batchSize, blockSize, latentSize]) * samplerConfig.truncationFactor
 
-        // Build latent prefix KV cache from previous blocks
-        // Note: This requires the model to have latent_encoder
-        // For simplicity, skip latent prefix if model doesn't have it
-
-        var timeSteps: [Float] = []
-        for i in 0..<numSteps {
-            timeSteps.append(0.999 - Float(i) * 0.999 / Float(numSteps))
-        }
-        timeSteps.append(0.0)
-
+        // Euler integration for this block
         for step in 0..<numSteps {
-            let t = timeSteps[step]
-            let tNext = timeSteps[step + 1]
-            let dt = tNext - t
+            let t = tSchedule[step]
+            let tNext = tSchedule[step + 1]
+            let hasCFG = t >= samplerConfig.cfgMinT && t <= samplerConfig.cfgMaxT
 
-            let useCFG = t >= samplerConfig.cfgMinT && t <= samplerConfig.cfgMaxT
+            var vPred: MLXArray
 
-            if useCFG {
+            if hasCFG {
                 let xTriple = MLX.concatenated([xT, xT, xT], axis: 0)
-                let tArray = MLXArray(Array(repeating: t, count: batchSize * 3))
+                let tFull = MLXArray(Array(repeating: t, count: batchSize * 3))
 
                 let vAll = model(
                     xTriple,
-                    timestep: tArray,
-                    textKVCache: textKV3,
-                    speakerKVCache: speakerKV3,
-                    textMask: textMask3,
-                    speakerMask: speakerMask3
+                    timestep: tFull,
+                    textKVCache: textKVFull,
+                    speakerKVCache: speakerKVFull,
+                    latentKVCache: latentKVFull,
+                    textMask: fullTextMask,
+                    speakerMask: fullSpeakerMask,
+                    startPos: startPos
                 )
 
                 let vCond = vAll[..<batchSize, 0..., 0...]
                 let vUncondText = vAll[batchSize..<(2 * batchSize), 0..., 0...]
                 let vUncondSpeaker = vAll[(2 * batchSize)..., 0..., 0...]
 
-                let vPred = vCond
+                vPred = vCond
                     + samplerConfig.cfgScaleText * (vCond - vUncondText)
                     + samplerConfig.cfgScaleSpeaker * (vCond - vUncondSpeaker)
-
-                xT = xT + vPred * dt
             } else {
-                let tArray = MLXArray(Array(repeating: t, count: batchSize))
-                let vPred = model(
+                let tCond = MLXArray(Array(repeating: t, count: batchSize))
+                vPred = model(
                     xT,
-                    timestep: tArray,
+                    timestep: tCond,
                     textKVCache: textKVCond,
                     speakerKVCache: speakerKVCond,
+                    latentKVCache: latentKVCond,
                     textMask: textMask,
-                    speakerMask: speakerMask
+                    speakerMask: speakerMask,
+                    startPos: startPos
                 )
-                xT = xT + vPred * dt
             }
 
+            // Temporal rescaling
+            if let rescaleK = samplerConfig.rescaleK,
+               let rescaleSigma = samplerConfig.rescaleSigma {
+                vPred = echoTemporalScoreRescale(vPred, t: t, rescaleK: rescaleK, rescaleSigma: rescaleSigma)
+            }
+
+            // Speaker KV scale crossover (un-do scaling at boundary)
+            if let kvScale = samplerConfig.speakerKvScale,
+               let kvMinT = samplerConfig.speakerKvMinT,
+               tNext < kvMinT && t >= kvMinT {
+                speakerKVCond = echoMultiplyKVCache(
+                    speakerKVCond, scale: 1.0 / kvScale,
+                    maxLayers: samplerConfig.speakerKvMaxLayers
+                )
+                speakerKVFull = echoConcatKVCaches([speakerKVCond, speakerKVCond, speakerKVCond])
+            }
+
+            xT = xT + vPred * (tNext - t)
             eval(xT)
         }
 
-        allBlocks.append(xT)
+        let blockTime = Date().timeIntervalSince(blockStart)
+        print("[EchoTTS] Block \(blockIdx) (\(blockSize) frames): diffusion completed in \(String(format: "%.2f", blockTime))s")
+
+        // Build context from previous blocks (nil for first block)
+        let contextLatent: MLXArray? = generatedChunks.isEmpty
+            ? nil
+            : MLX.concatenated(generatedChunks, axis: 1)
+
+        generatedChunks.append(xT)
+        startPos += blockSize
+
+        // Notify callback with this block's latent and previous context
+        // Returns false to stop early (e.g. remaining blocks are silence)
+        let shouldContinue = onBlockComplete?(xT, contextLatent) ?? true
+        if !shouldContinue {
+            print("[EchoTTS] Early termination after block \(blockIdx) — remaining blocks skipped")
+            break
+        }
     }
 
-    return MLX.concatenated(allBlocks, axis: 1)
+    return MLX.concatenated(generatedChunks, axis: 1)
 }
