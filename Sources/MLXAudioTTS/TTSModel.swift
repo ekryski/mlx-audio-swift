@@ -25,7 +25,8 @@ public enum TTS {
         modelRepo: String,
         textProcessor: TextProcessor? = nil,
         hfToken: String? = nil,
-        cache: HubCache = .default
+        cache: HubCache = .default,
+        quantization: EchoTTSModel.QuantizationConfig? = nil
     ) async throws -> SpeechGenerationModel {
         guard let repoID = Repo.ID(rawValue: modelRepo) else {
             throw TTSModelError.invalidRepositoryID(modelRepo)
@@ -38,7 +39,8 @@ public enum TTS {
         )
         return try await loadModel(
             modelRepo: modelRepo, modelType: modelType,
-            textProcessor: textProcessor, cache: cache
+            textProcessor: textProcessor, cache: cache,
+            quantization: quantization
         )
     }
 
@@ -46,7 +48,8 @@ public enum TTS {
         modelRepo: String,
         modelType: String?,
         textProcessor: TextProcessor? = nil,
-        cache: HubCache = .default
+        cache: HubCache = .default,
+        quantization: EchoTTSModel.QuantizationConfig? = nil
     ) async throws -> SpeechGenerationModel {
         let resolvedType = normalizedModelType(modelType) ?? inferModelType(from: modelRepo)
         guard let resolvedType else {
@@ -71,6 +74,10 @@ public enum TTS {
         case "kokoro", "kokoro_tts":
             return try await KokoroModel.fromPretrained(
                 modelRepo, textProcessor: textProcessor
+            )
+        case "echo_tts", "echo":
+            return try await EchoTTSModel.fromPretrained(
+                modelRepo, cache: cache, quantization: quantization
             )
         default:
             throw TTSModelError.unsupportedModelType(modelType ?? resolvedType)
@@ -109,6 +116,9 @@ public enum TTS {
         }
         if lower.contains("kokoro") {
             return "kokoro"
+        }
+        if lower.contains("echo_tts") || lower.contains("echo-tts") || lower.contains("echo") {
+            return "echo_tts"
         }
         return nil
     }
