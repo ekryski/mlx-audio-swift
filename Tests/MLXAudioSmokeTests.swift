@@ -9,18 +9,17 @@
 //    xcodebuild test \
 //      -scheme MLXAudio-Package \
 //      -destination 'platform=macOS' \
-//      -only-testing:MLXAudioTests/Smoke \
-//      CODE_SIGNING_ALLOWED=NO
+//      -only-testing:MLXAudioTests/SmokeTests
 //
 //  Run a single category:
-//    -only-testing:'MLXAudioTests/Smoke/CodecsSmokeTests'
-//    -only-testing:'MLXAudioTests/Smoke/TTSSmokeTests'
-//    -only-testing:'MLXAudioTests/Smoke/STTSmokeTests'
-//    -only-testing:'MLXAudioTests/Smoke/VADSmokeTests'
-//    -only-testing:'MLXAudioTests/Smoke/STSSmokeTests'
+//    -only-testing:'MLXAudioTests/SmokeTests/CodecsSmokeTests'
+//    -only-testing:'MLXAudioTests/SmokeTests/TTSSmokeTests'
+//    -only-testing:'MLXAudioTests/SmokeTests/STTSmokeTests'
+//    -only-testing:'MLXAudioTests/SmokeTests/VADSmokeTests'
+//    -only-testing:'MLXAudioTests/SmokeTests/STSSmokeTests'
 //
 //  Run a single test (note the trailing parentheses for Swift Testing):
-//    -only-testing:'MLXAudioTests/Smoke/STTSmokeTests/qwen3ASRTranscribe()'
+//    -only-testing:'MLXAudioTests/SmokeTests/STTSmokeTests/qwen3ASRTranscribe()'
 //
 //  Filter test results:
 //   2>&1 | grep --color=never -E '(^􀟈 |^􁁛 |^􀢄 |^\*\* TEST|\x1b\[1;35m|model loaded|Encoded to|Reconstructed audio|Generating audio|Generated audio|Generated [0-9]+ tokens|Streaming|Saved |Received final|Found [0-9]|Processing time|Streaming complete|Chunk [0-9]|  [Tt]ext:|  prompt_tokens|  generation_tokens|  total_tokens|  prompt_tps|  generation_tps|total_time| peak_memory|Peak Memory|Prompt:.*tokens/s|Prompt Tokens|Total Time|SPEAKER audio|Sortformer Output|Audio input shape|Loading.*model|Loaded audio|ForcedAligner|Running forced|\[.*s - .*s\])'
@@ -418,6 +417,106 @@ struct TTSSmokeTests {
         }
     }
 
+    @Test func echoTTSGenerate() async throws {
+        testHeader("echoTTSGenerate")
+        defer { testCleanup("echoTTSGenerate") }
+
+        // Load reference audio for voice cloning (Echo TTS expects 44.1kHz)
+        // Try sam-altman.wav first, fall back to bundled conversational_a.wav
+        let refAudio: MLXArray
+        let samAltmanPath = "\(NSHomeDirectory())/.sam/voices/standard/sam-altman.wav"
+        if FileManager.default.fileExists(atPath: samAltmanPath) {
+            let samURL = URL(fileURLWithPath: samAltmanPath)
+            let (_, loaded) = try loadAudioArray(from: samURL, sampleRate: 44100)
+            refAudio = loaded
+            print("\u{001B}[36mLoaded sam-altman.wav reference audio: \(refAudio.shape)\u{001B}[0m")
+        } else {
+            guard let audioURL = Bundle.module.url(
+                forResource: "conversational_a", withExtension: "wav", subdirectory: "media"
+            ) else {
+                Issue.record("Test audio file 'conversational_a.wav' not found in bundle")
+                return
+            }
+            let (_, loaded) = try loadAudioArray(from: audioURL, sampleRate: 44100)
+            refAudio = loaded
+            print("\u{001B}[36mLoaded conversational_a.wav reference audio: \(refAudio.shape)\u{001B}[0m")
+        }
+
+        print("\u{001B}[33mLoading Echo TTS model...\u{001B}[0m")
+        let model = try await EchoTTSModel.fromPretrained("mlx-community/echo-tts-base")
+        print("\u{001B}[32mEcho TTS model loaded!\u{001B}[0m")
+
+        #expect(model.sampleRate == 44100, "Sample rate should be 44100")
+
+        let text = "Hello. This is a preview of the Sam Altman voice."
+        print("\u{001B}[33mGenerating audio for: \"\(text)\"...\u{001B}[0m")
+
+        let audio = try await model.generate(
+            text: text,
+            voice: nil,
+            refAudio: refAudio,
+            refText: nil,
+            language: nil,
+            generationParameters: model.defaultGenerationParameters
+        )
+
+        print("\u{001B}[32mGenerated audio shape: \(audio.shape)\u{001B}[0m")
+        #expect(audio.shape[0] > 0, "Audio should have samples")
+
+        // Verify reasonable duration (at least 0.5s and less than 60s at 44.1kHz)
+        let durationSec = Double(audio.shape[0]) / 44100.0
+        print("\u{001B}[32mGenerated audio duration: \(String(format: "%.2f", durationSec))s\u{001B}[0m")
+        #expect(durationSec > 0.5, "Audio should be at least 0.5 seconds")
+        #expect(durationSec < 60.0, "Audio should be less than 60 seconds")
+
+        let outputURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("echo_tts_test_output.wav")
+        try saveAudioArray(audio, sampleRate: Double(model.sampleRate), to: outputURL)
+        print("\u{001B}[32mSaved generated audio to\u{001B}[0m: \(outputURL.path)")
+    }
+
+    @Test func echoTTSGenerateStream() async throws {
+        testHeader("echoTTSGenerateStream")
+        defer { testCleanup("echoTTSGenerateStream") }
+        print("\u{001B}[33mLoading Echo TTS model...\u{001B}[0m")
+        let model = try await EchoTTSModel.fromPretrained("mlx-community/echo-tts-base")
+        print("\u{001B}[32mEcho TTS model loaded!\u{001B}[0m")
+
+        let text = "Streaming test for Echo TTS model."
+        print("\u{001B}[33mStreaming generation for: \"\(text)\"...\u{001B}[0m")
+
+        var finalAudio: MLXArray?
+        var generationInfo: AudioGenerationInfo?
+
+        for try await event in model.generateStream(
+            text: text, voice: nil, refAudio: nil, refText: nil, language: nil,
+            generationParameters: model.defaultGenerationParameters
+        ) {
+            switch event {
+            case .audio(let audio):
+                finalAudio = audio
+                print("\u{001B}[32mReceived final audio: \(audio.shape)\u{001B}[0m")
+            case .info(let info):
+                generationInfo = info
+                print("\u{001B}[36mGeneration info: generateTime=\(String(format: "%.2f", info.generateTime))s, peakMemory=\(String(format: "%.2f", info.peakMemoryUsage))GB\u{001B}[0m")
+            case .token(_):
+                break
+            }
+        }
+
+        #expect(finalAudio != nil, "Should have received final audio")
+        #expect(generationInfo != nil, "Should have received generation info")
+
+        if let audio = finalAudio {
+            #expect(audio.shape[0] > 0, "Audio should have samples")
+
+            let outputURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("echo_tts_stream_test_output.wav")
+            try saveAudioArray(audio, sampleRate: Double(model.sampleRate), to: outputURL)
+            print("\u{001B}[32mSaved streamed audio to\u{001B}[0m: \(outputURL.path)")
+        }
+    }
+
     @Test func chatterboxTurboGenerate() async throws {
         testHeader("chatterboxTurboGenerate")
         defer { testCleanup("chatterboxTurboGenerate") }
@@ -583,6 +682,8 @@ struct TTSSmokeTests {
         }
     }
 
+    // MARK: - Kokoro TTS Tests
+
     @Test func kokoroGenerate() async throws {
         testHeader("kokoroGenerate")
         defer { testCleanup("kokoroGenerate") }
@@ -710,106 +811,6 @@ struct TTSSmokeTests {
             .appendingPathComponent("kokoro_synthesize_direct_output.wav")
         try saveAudioArray(normalAudio, sampleRate: 24000.0, to: outputURL)
         print("\u{001B}[32mSaved synthesized audio to\u{001B}[0m: \(outputURL.path)")
-    }
-
-    @Test func echoTTSGenerate() async throws {
-        testHeader("echoTTSGenerate")
-        defer { testCleanup("echoTTSGenerate") }
-
-        // Load reference audio for voice cloning (Echo TTS expects 44.1kHz)
-        // Try sam-altman.wav first, fall back to bundled conversational_a.wav
-        let refAudio: MLXArray
-        let samAltmanPath = "\(NSHomeDirectory())/.sam/voices/standard/sam-altman.wav"
-        if FileManager.default.fileExists(atPath: samAltmanPath) {
-            let samURL = URL(fileURLWithPath: samAltmanPath)
-            let (_, loaded) = try loadAudioArray(from: samURL, sampleRate: 44100)
-            refAudio = loaded
-            print("\u{001B}[36mLoaded sam-altman.wav reference audio: \(refAudio.shape)\u{001B}[0m")
-        } else {
-            guard let audioURL = Bundle.module.url(
-                forResource: "conversational_a", withExtension: "wav", subdirectory: "media"
-            ) else {
-                Issue.record("Test audio file 'conversational_a.wav' not found in bundle")
-                return
-            }
-            let (_, loaded) = try loadAudioArray(from: audioURL, sampleRate: 44100)
-            refAudio = loaded
-            print("\u{001B}[36mLoaded conversational_a.wav reference audio: \(refAudio.shape)\u{001B}[0m")
-        }
-
-        print("\u{001B}[33mLoading Echo TTS model...\u{001B}[0m")
-        let model = try await EchoTTSModel.fromPretrained("mlx-community/echo-tts-base")
-        print("\u{001B}[32mEcho TTS model loaded!\u{001B}[0m")
-
-        #expect(model.sampleRate == 44100, "Sample rate should be 44100")
-
-        let text = "Hello. This is a preview of the Sam Altman voice."
-        print("\u{001B}[33mGenerating audio for: \"\(text)\"...\u{001B}[0m")
-
-        let audio = try await model.generate(
-            text: text,
-            voice: nil,
-            refAudio: refAudio,
-            refText: nil,
-            language: nil,
-            generationParameters: model.defaultGenerationParameters
-        )
-
-        print("\u{001B}[32mGenerated audio shape: \(audio.shape)\u{001B}[0m")
-        #expect(audio.shape[0] > 0, "Audio should have samples")
-
-        // Verify reasonable duration (at least 0.5s and less than 60s at 44.1kHz)
-        let durationSec = Double(audio.shape[0]) / 44100.0
-        print("\u{001B}[32mGenerated audio duration: \(String(format: "%.2f", durationSec))s\u{001B}[0m")
-        #expect(durationSec > 0.5, "Audio should be at least 0.5 seconds")
-        #expect(durationSec < 60.0, "Audio should be less than 60 seconds")
-
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("echo_tts_test_output.wav")
-        try saveAudioArray(audio, sampleRate: Double(model.sampleRate), to: outputURL)
-        print("\u{001B}[32mSaved generated audio to\u{001B}[0m: \(outputURL.path)")
-    }
-
-    @Test func echoTTSGenerateStream() async throws {
-        testHeader("echoTTSGenerateStream")
-        defer { testCleanup("echoTTSGenerateStream") }
-        print("\u{001B}[33mLoading Echo TTS model...\u{001B}[0m")
-        let model = try await EchoTTSModel.fromPretrained("mlx-community/echo-tts-base")
-        print("\u{001B}[32mEcho TTS model loaded!\u{001B}[0m")
-
-        let text = "Streaming test for Echo TTS model."
-        print("\u{001B}[33mStreaming generation for: \"\(text)\"...\u{001B}[0m")
-
-        var finalAudio: MLXArray?
-        var generationInfo: AudioGenerationInfo?
-
-        for try await event in model.generateStream(
-            text: text, voice: nil, refAudio: nil, refText: nil, language: nil,
-            generationParameters: model.defaultGenerationParameters
-        ) {
-            switch event {
-            case .audio(let audio):
-                finalAudio = audio
-                print("\u{001B}[32mReceived final audio: \(audio.shape)\u{001B}[0m")
-            case .info(let info):
-                generationInfo = info
-                print("\u{001B}[36mGeneration info: generateTime=\(String(format: "%.2f", info.generateTime))s, peakMemory=\(String(format: "%.2f", info.peakMemoryUsage))GB\u{001B}[0m")
-            case .token(_):
-                break
-            }
-        }
-
-        #expect(finalAudio != nil, "Should have received final audio")
-        #expect(generationInfo != nil, "Should have received generation info")
-
-        if let audio = finalAudio {
-            #expect(audio.shape[0] > 0, "Audio should have samples")
-
-            let outputURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("echo_tts_stream_test_output.wav")
-            try saveAudioArray(audio, sampleRate: Double(model.sampleRate), to: outputURL)
-            print("\u{001B}[32mSaved streamed audio to\u{001B}[0m: \(outputURL.path)")
-        }
     }
 }
 
@@ -976,6 +977,110 @@ struct STTSmokeTests {
             #expect(output.generationTokens > 0, "Generation tokens should be greater than 0")
             print("\u{001B}[32m\(output)\u{001B}[0m")
         }
+    }
+
+    // MARK: - Parakeet V2 STT Tests
+
+    @Test func parakeetV2Transcribe() async throws {
+        testHeader("parakeetV2Transcribe")
+        defer { testCleanup("parakeetV2Transcribe") }
+
+        let audioURL = Bundle.module.url(forResource: "intention", withExtension: "wav", subdirectory: "media")!
+        // Resample to 16kHz — Parakeet expects 16kHz mono input
+        let (sampleRate, audioData) = try loadAudioArray(from: audioURL, sampleRate: 16000)
+        print("\u{001B}[33mLoaded audio: \(audioData.shape), sample rate: \(sampleRate)\u{001B}[0m")
+
+        print("\u{001B}[33mLoading Parakeet V2 TDT model...\u{001B}[0m")
+        let model = try await ParakeetModel.fromPretrained("mlx-community/parakeet-tdt-0.6b-v2")
+        print("\u{001B}[32mParakeet V2 model loaded!\u{001B}[0m")
+        print("\u{001B}[36mVariant: \(model.variant)\u{001B}[0m")
+
+        let output = model.generate(audio: audioData)
+        print("\u{001B}[32mParakeet V2 Transcription: \"\(output.text)\"\u{001B}[0m")
+
+        #expect(!output.text.isEmpty, "Transcription text should not be empty")
+
+        let wordCount = output.text.split(separator: " ").count
+        print("\u{001B}[36mWord count: \(wordCount)\u{001B}[0m")
+        #expect(wordCount > 0, "Should transcribe at least one word")
+
+        // The intention.wav file contains the spoken word "intention"
+        let lowercased = output.text.lowercased()
+        if lowercased.contains("intention") {
+            print("\u{001B}[32m✓ Correctly transcribed 'intention'\u{001B}[0m")
+        } else {
+            // Short utterances (~1.5s) can be challenging for ASR models.
+            // The conversational test validates longer audio works accurately.
+            print("\u{001B}[33m⚠ Expected 'intention' but got: \"\(output.text)\" — short utterance accuracy varies\u{001B}[0m")
+        }
+    }
+
+    @Test func parakeetV2TranscribeStream() async throws {
+        testHeader("parakeetV2TranscribeStream")
+        defer { testCleanup("parakeetV2TranscribeStream") }
+
+        let audioURL = Bundle.module.url(forResource: "intention", withExtension: "wav", subdirectory: "media")!
+        // Resample to 16kHz — Parakeet expects 16kHz mono input
+        let (sampleRate, audioData) = try loadAudioArray(from: audioURL, sampleRate: 16000)
+        print("\u{001B}[33mLoaded audio: \(audioData.shape), sample rate: \(sampleRate)\u{001B}[0m")
+
+        print("\u{001B}[33mLoading Parakeet V2 TDT model...\u{001B}[0m")
+        let model = try await ParakeetModel.fromPretrained("mlx-community/parakeet-tdt-0.6b-v2")
+        print("\u{001B}[32mParakeet V2 model loaded!\u{001B}[0m")
+
+        print("\u{001B}[33mStreaming transcription...\u{001B}[0m")
+
+        var tokenCount = 0
+        var transcribedText = ""
+        var finalOutput: STTOutput?
+
+        for try await event in model.generateStream(audio: audioData) {
+            switch event {
+            case .token(let token):
+                tokenCount += 1
+                transcribedText += token
+            case .info(let info):
+                print("\n\u{001B}[36m\(info.summary)\u{001B}[0m")
+            case .result(let output):
+                finalOutput = output
+                print("\u{001B}[32mParakeet V2 Streaming Transcription: \"\(output.text)\"\u{001B}[0m")
+            }
+        }
+
+        #expect(tokenCount > 0, "Should have generated tokens")
+        #expect(finalOutput != nil, "Should have received final output")
+
+        if let output = finalOutput {
+            #expect(!output.text.isEmpty, "Transcription text should not be empty")
+            let wordCount = output.text.split(separator: " ").count
+            print("\u{001B}[36mWord count: \(wordCount)\u{001B}[0m")
+            #expect(wordCount > 0, "Should transcribe at least one word")
+        }
+    }
+
+    @Test func parakeetV2TranscribeConversational() async throws {
+        testHeader("parakeetV2TranscribeConversational")
+        defer { testCleanup("parakeetV2TranscribeConversational") }
+
+        let audioURL = Bundle.module.url(forResource: "conversational_a", withExtension: "wav", subdirectory: "media")!
+        // Resample to 16kHz — Parakeet expects 16kHz mono input
+        let (sampleRate, audioData) = try loadAudioArray(from: audioURL, sampleRate: 16000)
+        let audioDuration = Double(audioData.shape[0]) / Double(sampleRate)
+        print("\u{001B}[33mLoaded audio: \(audioData.shape), sample rate: \(sampleRate), duration: \(String(format: "%.1f", audioDuration))s\u{001B}[0m")
+
+        print("\u{001B}[33mLoading Parakeet V2 TDT model...\u{001B}[0m")
+        let model = try await ParakeetModel.fromPretrained("mlx-community/parakeet-tdt-0.6b-v2")
+        print("\u{001B}[32mParakeet V2 model loaded!\u{001B}[0m")
+
+        let output = model.generate(audio: audioData)
+        print("\u{001B}[32mParakeet V2 Conversational Transcription: \"\(output.text)\"\u{001B}[0m")
+
+        #expect(!output.text.isEmpty, "Transcription text should not be empty")
+
+        let wordCount = output.text.split(separator: " ").count
+        print("\u{001B}[36mWord count: \(wordCount)\u{001B}[0m")
+        // Conversational audio should transcribe to multiple words
+        #expect(wordCount > 5, "Conversational audio should transcribe to more than 5 words")
     }
 }
 

@@ -503,6 +503,7 @@ public struct Qwen3TTSModelConfig: Decodable, Sendable {
         ttsBosTokenId = try c.decodeIfPresent(Int.self, forKey: .ttsBosTokenId) ?? 151672
         ttsEosTokenId = try c.decodeIfPresent(Int.self, forKey: .ttsEosTokenId) ?? 151673
         sampleRate = try c.decodeIfPresent(Int.self, forKey: .sampleRate) ?? 24000
+        quantization = try c.decodeIfPresent(BaseConfiguration.Quantization.self, forKey: .quantization)
     }
 }
 

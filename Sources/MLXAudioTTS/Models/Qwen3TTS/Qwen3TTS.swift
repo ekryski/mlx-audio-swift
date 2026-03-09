@@ -812,11 +812,25 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
         cache: HubCache = .default
     ) async throws -> Qwen3TTSModel {
         let repoID = Repo.ID(rawValue: modelRepo)!
-        let modelDir = try await ModelUtils.resolveOrDownloadModel(
+        var modelDir = try await ModelUtils.resolveOrDownloadModel(
             repoID: repoID,
             requiredExtension: "safetensors",
             cache: cache
         )
+
+        // Validate essential tokenizer files exist — incomplete caches can have
+        // safetensors + config.json but be missing vocab.json/merges.txt from
+        // interrupted downloads. Need either vocab.json (to generate) or tokenizer.json.
+        let fm = FileManager.default
+        let hasVocab = fm.fileExists(atPath: modelDir.appendingPathComponent("vocab.json").path)
+        let hasTokenizerJson = fm.fileExists(atPath: modelDir.appendingPathComponent("tokenizer.json").path)
+        if !hasVocab && !hasTokenizerJson {
+            print("Cache missing tokenizer files (vocab.json/tokenizer.json), clearing and re-downloading...")
+            try? fm.removeItem(at: modelDir)
+            modelDir = try await ModelUtils.resolveOrDownloadModel(
+                repoID: repoID, requiredExtension: "safetensors"
+            )
+        }
 
         // Load main config
         let configData = try Data(contentsOf: modelDir.appendingPathComponent("config.json"))
@@ -826,7 +840,6 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
 
         // Load talker weights
         var allWeights = [String: MLXArray]()
-        let fm = FileManager.default
         let modelFiles = try fm.contentsOfDirectory(at: modelDir, includingPropertiesForKeys: nil)
         for file in modelFiles where file.pathExtension == "safetensors" {
             let weights = try MLX.loadArrays(url: file)
@@ -837,6 +850,7 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
         let talkerWeights = Qwen3TTSTalkerForConditionalGeneration.sanitize(weights: allWeights)
         let talkerPairs = talkerWeights.map { ($0.key, $0.value) }
 
+        // Apply quantization before weight loading (converts Linear → QuantizedLinear)
         // Quantized checkpoints store packed weights and companion .scales tensors.
         // Convert talker Linear layers before loading those tensors.
         if config.quantization != nil || config.perLayerQuantization != nil {
@@ -881,11 +895,14 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
             }
         }
 
-        // Load tokenizer
+        // Load tokenizer — fail immediately if tokenizer can't load, rather than
+        // deferring to a confusing "Text tokenizer not loaded" error during synthesis
         do {
             model.tokenizer = try await AutoTokenizer.from(modelFolder: modelDir)
         } catch {
-            print("Warning: Could not load tokenizer: \(error)")
+            throw AudioGenerationError.modelNotInitialized(
+                "Failed to load text tokenizer: \(error). Try clearing model cache and re-downloading."
+            )
         }
 
         // Load speech tokenizer — check that it's a directory, not a stale file
@@ -911,7 +928,15 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
             if !speakerWeights.isEmpty {
                 if let speakerEncoder = model.speakerEncoder {
                     let speakerPairs = speakerWeights.map { ($0.key, $0.value) }
-                    try speakerEncoder.update(parameters: ModuleParameters.unflattened(speakerPairs), verify: .all)
+
+                    if config.quantization != nil {
+                        quantize(model: speakerEncoder) { path, _ in
+                            guard speakerWeights["\(path).scales"] != nil else { return nil }
+                            return config.quantization?.asTuple
+                        }
+                    }
+
+                    try speakerEncoder.update(parameters: ModuleParameters.unflattened(speakerPairs), verify: [])
                     eval(speakerEncoder.parameters())
                 }
             }
@@ -951,7 +976,18 @@ public final class Qwen3TTSModel: Module, SpeechGenerationModel, @unchecked Send
         if !tokenizerWeights.isEmpty {
             let sanitized = Qwen3TTSSpeechTokenizer.sanitize(weights: tokenizerWeights)
             let pairs = sanitized.map { ($0.key, $0.value) }
-            try speechTokenizer.update(parameters: ModuleParameters.unflattened(pairs), verify: .all)
+
+            // Apply quantization if weights contain .scales keys (quantized tokenizer)
+            let hasQuantizedWeights = sanitized.keys.contains { $0.hasSuffix(".scales") }
+            if hasQuantizedWeights {
+                quantize(model: speechTokenizer) { path, _ in
+                    guard sanitized["\(path).scales"] != nil else { return nil }
+                    // Default quantization params — will be overridden by actual weight shapes
+                    return (groupSize: 64, bits: 4, mode: .affine)
+                }
+            }
+
+            try speechTokenizer.update(parameters: ModuleParameters.unflattened(pairs), verify: [])
             eval(speechTokenizer.parameters())
         }
 

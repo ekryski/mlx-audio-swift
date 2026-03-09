@@ -178,36 +178,52 @@ private func reverseArray(_ arr: MLXArray) -> MLXArray {
 }
 
 /// Short-time Fourier Transform.
+///
+/// - Parameters:
+///   - audio: 1D audio waveform
+///   - window: Window function (e.g. from `hanningWindow`)
+///   - nFft: FFT size
+///   - hopLength: Hop length between frames
+///   - center: Whether to center-pad the audio by nFft/2 on each side (default: true).
+///             Set to false when the caller has already applied padding (e.g. S3Gen mel).
+///   - padMode: Padding mode when center is true (reflect or constant)
 public func stft(
     audio: MLXArray,
     window: MLXArray,
     nFft: Int,
     hopLength: Int,
+    center: Bool = true,
     padMode: PadMode = .reflect
 ) -> MLXArray {
-    // Pad audio for centering
-    let padding = nFft / 2
-    let audioLen = audio.shape[0]
-
     let padded: MLXArray
-    switch padMode {
-    case .reflect:
-        // Reflect padding: reverse slices at both ends
-        let prefixSlice = audio[1..<(min(padding + 1, audioLen))]
-        let prefix = reverseArray(prefixSlice)
 
-        let suffixStart = max(0, audioLen - padding - 1)
-        let suffixEnd = max(1, audioLen - 1)
-        let suffixSlice = audio[suffixStart..<suffixEnd]
-        let suffix = reverseArray(suffixSlice)
+    if center {
+        // Pad audio for centering
+        let padding = nFft / 2
+        let audioLen = audio.shape[0]
 
-        padded = MLX.concatenated([prefix, audio, suffix])
+        switch padMode {
+        case .reflect:
+            // Reflect padding: reverse slices at both ends
+            let prefixSlice = audio[1..<(min(padding + 1, audioLen))]
+            let prefix = reverseArray(prefixSlice)
 
-    case .constant:
-        // Zero padding
-        let prefix = MLXArray.zeros([padding])
-        let suffix = MLXArray.zeros([padding])
-        padded = MLX.concatenated([prefix, audio, suffix])
+            let suffixStart = max(0, audioLen - padding - 1)
+            let suffixEnd = max(1, audioLen - 1)
+            let suffixSlice = audio[suffixStart..<suffixEnd]
+            let suffix = reverseArray(suffixSlice)
+
+            padded = MLX.concatenated([prefix, audio, suffix])
+
+        case .constant:
+            // Zero padding
+            let prefix = MLXArray.zeros([padding])
+            let suffix = MLXArray.zeros([padding])
+            padded = MLX.concatenated([prefix, audio, suffix])
+        }
+    } else {
+        // No centering — assume caller already padded if needed
+        padded = audio
     }
 
     // Calculate number of frames
