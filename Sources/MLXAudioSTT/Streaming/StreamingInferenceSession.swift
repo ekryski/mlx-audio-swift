@@ -518,7 +518,9 @@ public class StreamingInferenceSession: @unchecked Sendable {
             if params.config.temperature > 0 {
                 lastLogits = lastLogits / params.config.temperature
             }
-            let nextToken = lastLogits.argMax(axis: -1).item(Int.self)
+            let tokenResult = lastLogits.argMax(axis: -1)
+            eval(tokenResult)
+            let nextToken = tokenResult.item(Int.self)
 
             if eosTokenIds.contains(nextToken) { break }
 
@@ -977,7 +979,9 @@ public class StreamingInferenceSession: @unchecked Sendable {
             if config.temperature > 0 {
                 lastLogits = lastLogits / config.temperature
             }
-            let nextToken = lastLogits.argMax(axis: -1).item(Int.self)
+            let tokenResult = lastLogits.argMax(axis: -1)
+            eval(tokenResult)
+            let nextToken = tokenResult.item(Int.self)
 
             if eosTokenIds.contains(nextToken) { break }
             allTokenIds.append(nextToken)

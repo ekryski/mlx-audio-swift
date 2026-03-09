@@ -2318,3 +2318,55 @@ struct KokoroMultilingualProcessorTests {
         try await processor.prepare(for: "en")
     }
 }
+
+
+// MARK: - TextProcessor Unit Tests
+
+struct MockG2PProcessor: TextProcessor {
+    let fixedOutput: String
+
+    func process(text: String, language: String?) throws -> String {
+        return fixedOutput
+    }
+}
+
+struct TextProcessorProtocolTests {
+
+    @Test func testTextProcessorProtocolConformance() {
+        let processor = MockG2PProcessor(fixedOutput: "hɛloʊ wˈɜɹld")
+        let result = try! processor.process(text: "Hello world", language: nil)
+        #expect(result == "hɛloʊ wˈɜɹld", "Mock processor should return fixed output")
+    }
+
+    @Test func testTextProcessorWithLanguage() {
+        struct LanguageAwareProcessor: TextProcessor {
+            func process(text: String, language: String?) throws -> String {
+                if language == "en-gb" {
+                    return "brɪtɪʃ"
+                }
+                return "əmɛɹɪkən"
+            }
+        }
+
+        let processor = LanguageAwareProcessor()
+        let usResult = try! processor.process(text: "test", language: "en-us")
+        let gbResult = try! processor.process(text: "test", language: "en-gb")
+        #expect(usResult == "əmɛɹɪkən")
+        #expect(gbResult == "brɪtɪʃ")
+    }
+
+    @Test func testTextProcessorThrowsError() {
+        struct FailingProcessor: TextProcessor {
+            func process(text: String, language: String?) throws -> String {
+                throw NSError(domain: "G2PError", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "Unsupported language"
+                ])
+            }
+        }
+
+        let processor = FailingProcessor()
+        #expect(throws: (any Error).self) {
+            try processor.process(text: "test", language: "unsupported")
+        }
+    }
+}

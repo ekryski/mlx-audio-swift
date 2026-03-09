@@ -151,6 +151,9 @@ public final class KokoroModel: Module, SpeechGenerationModel, @unchecked Sendab
         }
 
         let tokens = tokenize(phonemized)
+        guard !tokens.isEmpty else {
+            throw AudioGenerationError.invalidInput("Input has no tokens after phonemization")
+        }
         guard tokens.count <= maxTokenCount else {
             throw AudioGenerationError.invalidInput(
                 "Input too long: \(tokens.count) tokens exceeds max \(maxTokenCount)")
