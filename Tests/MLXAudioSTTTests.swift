@@ -1,9 +1,33 @@
+//  Run the STT suites in this file:
+//    xcodebuild test \
+//      -scheme MLXAudio-Package \
+//      -destination 'platform=macOS' \
+//      -parallel-testing-enabled NO \
+//      -only-testing:MLXAudioTests/GLMASRModuleSetupTests \
+//      -only-testing:MLXAudioTests/Qwen3ASRModuleSetupTests \
+//      -only-testing:MLXAudioTests/ForceAlignProcessorTests \
+//      -only-testing:MLXAudioTests/ForcedAlignResultTests \
+//      -only-testing:MLXAudioTests/Qwen3ASRHelperTests \
+//      -only-testing:MLXAudioTests/SplitAudioIntoChunksTests \
+//      -only-testing:MLXAudioTests/ParakeetSTTTests \
+//      -only-testing:MLXAudioTests/VoxtralRealtimeSTTTests \
+//      CODE_SIGNING_ALLOWED=NO
 //
-//  MLXAudioSTTTests.swift
-//  MLXAudioTests
+//  Run a single category:
+//    -only-testing:'MLXAudioTests/GLMASRModuleSetupTests'
+//    -only-testing:'MLXAudioTests/Qwen3ASRModuleSetupTests'
+//    -only-testing:'MLXAudioTests/ForceAlignProcessorTests'
+//    -only-testing:'MLXAudioTests/ForcedAlignResultTests'
+//    -only-testing:'MLXAudioTests/Qwen3ASRHelperTests'
+//    -only-testing:'MLXAudioTests/SplitAudioIntoChunksTests'
+//    -only-testing:'MLXAudioTests/ParakeetSTTTests'
+//    -only-testing:'MLXAudioTests/VoxtralRealtimeSTTTests'
 //
-//  Created by Prince Canuma on 04/01/2026.
+//  Run a single test (note the trailing parentheses for Swift Testing):
+//    -only-testing:'MLXAudioTests/GLMASRModuleSetupTests/whisperConfigDefaults()'
 //
+//  Filter test results:
+//    2>&1 | grep --color=never -E '(Suite.*started|Test test.*started|passed after|failed after|TEST SUCCEEDED|TEST FAILED|Suite.*passed|Test run)'
 
 import Foundation
 import Testing
@@ -1353,6 +1377,28 @@ struct Qwen3ASRHelperTests {
 
         // At boundary of 100, should get 13 tokens from the chunk
         #expect(result == 13)
+    }
+
+    @Test func computeChunkedEncoderWindowLengthsMatchesChunkedOutputs() {
+        let windowLengths = computeChunkedEncoderWindowLengths(
+            chunkFeatureLengthsAfterCnn: Array(repeating: 13, count: 21) + [8],
+            chunkCountsPerInput: [22],
+            chunksPerWindow: 8
+        )
+
+        #expect(windowLengths == [104, 104, 73])
+    }
+
+    @Test func computeChunkedEncoderWindowLengthsPreservesSplitFixtureShape() {
+        let windowLengths = computeChunkedEncoderWindowLengths(
+            chunkFeatureLengthsAfterCnn: Array(repeating: 13, count: 21) + [8]
+                + Array(repeating: 13, count: 8) + [5],
+            chunkCountsPerInput: [22, 9],
+            chunksPerWindow: 8
+        )
+
+        #expect(windowLengths == [104, 104, 73, 104, 5])
+        #expect(windowLengths.reduce(0, +) == 390)
     }
 }
 
