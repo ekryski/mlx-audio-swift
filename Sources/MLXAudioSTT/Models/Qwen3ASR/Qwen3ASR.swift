@@ -541,7 +541,8 @@ public class Qwen3ASRAudioEncoder: Module {
             let end = min(windowOffset + winLen, seqLen)
             guard windowOffset < end else { continue }
             let window = hiddenStates[windowOffset..<end]
-            windowsByLen[winLen, default: []].append((index: i, data: window))
+            let actualLen = end - windowOffset
+            windowsByLen[actualLen, default: []].append((index: i, data: window))
             windowOffset = end
         }
 

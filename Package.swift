@@ -58,7 +58,7 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/ml-explore/mlx-swift.git", .upToNextMajor(from: "0.30.6")),
-        .package(url: "https://github.com/ml-explore/mlx-swift-lm.git", .upToNextMajor(from: "2.30.3")),
+        .package(path: "../ai/mlx-swift-lm"),
         .package(url: "https://github.com/huggingface/swift-transformers.git", .upToNextMajor(from: "1.1.6")),
         .package(url: "https://github.com/huggingface/swift-huggingface.git", .upToNextMajor(from: "0.8.1"))
     ],
@@ -103,7 +103,8 @@ let package = Package(
                 .product(name: "HuggingFace", package: "swift-huggingface"),
                 .product(name: "Transformers", package: "swift-transformers"),
             ],
-            path: "Sources/MLXAudioTTS"
+            path: "Sources/MLXAudioTTS",
+            exclude: ["Models/PocketTTS/README.md", "Models/Soprano/README.md", "Models/Kokoro/README.md", "Models/Llama/README.md", "Models/Marvis/README.md", "Models/Qwen3/README.md", "Models/Chatterbox/README.md"]
         ),
 
         // MARK: - MLXAudioSTT
@@ -119,7 +120,8 @@ let package = Package(
                 .product(name: "HuggingFace", package: "swift-huggingface"),
                 .product(name: "Transformers", package: "swift-transformers"),
             ],
-            path: "Sources/MLXAudioSTT"
+            path: "Sources/MLXAudioSTT",
+            exclude: ["Models/Qwen3ASR/README.md", "Models/VoxtralRealtime/README.md", "Models/Parakeet/README.md", "Models/GLMASR/README.md"]
         ),
 
         // MARK: - MLXAudioVAD
