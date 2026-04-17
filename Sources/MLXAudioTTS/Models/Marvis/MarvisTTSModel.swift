@@ -28,7 +28,7 @@ public final class MarvisTTSModel: Module {
     private let _textTokenizer: Tokenizers.Tokenizer
     private let _audio_tokenizer: MimiTokenizer
     private let _streamingDecoder: MimiStreamingDecoder
-    
+
     public init(
         config: CSMModelArgs,
         repoId: String,

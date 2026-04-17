@@ -198,7 +198,7 @@ public class ChatState {
 public class LFM2AudioProcessor {
     public let config: LFM2AudioConfig
     let audioPreprocessor: AudioPreprocessor
-    private var _tokenizer: Tokenizer?
+    private var _tokenizer: Tokenizers.Tokenizer?
     public var modelPath: URL?
 
     public init(_ config: LFM2AudioConfig) {
@@ -206,7 +206,7 @@ public class LFM2AudioProcessor {
         self.audioPreprocessor = AudioPreprocessor(config.preprocessor)
     }
 
-    public var tokenizer: Tokenizer {
+    public var tokenizer: Tokenizers.Tokenizer {
         get throws {
             if let t = _tokenizer { return t }
             throw LFMAudioError.tokenizerNotLoaded
