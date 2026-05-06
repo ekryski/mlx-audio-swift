@@ -1,74 +1,93 @@
 import Foundation
 import MLX
 
-func echoTtsNormalizeTextPrompt(_ text: String) -> String {
-    var normalized = text
-    normalized = normalized.replacingOccurrences(of: "…", with: "...")
-    normalized = normalized.replacingOccurrences(of: "’", with: "'")
-    normalized = normalized.replacingOccurrences(of: "“", with: "\"")
-    normalized = normalized.replacingOccurrences(of: "”", with: "\"")
-    normalized = normalized.replacingOccurrences(of: "\n", with: " ")
-    normalized = normalized.replacingOccurrences(of: ":", with: ",")
-    normalized = normalized.replacingOccurrences(of: ";", with: ",")
-    normalized = normalized.replacingOccurrences(of: "—", with: ", ")
+// MARK: - Text Normalization
 
-    if !normalized.hasPrefix("[")
-        && !normalized.hasPrefix("(")
-        && !normalized.contains("S1")
-        && !normalized.contains("S2")
-    {
-        normalized = "[S1] " + normalized
+/// Normalize text for Echo TTS processing.
+func echoNormalizeTextPrompt(_ text: String) -> String {
+    var result = text
+
+    // Replace unicode characters with ASCII equivalents
+    let replacements: [(String, String)] = [
+        ("\u{2018}", "'"), ("\u{2019}", "'"),   // Curly single quotes
+        ("\u{201C}", "\""), ("\u{201D}", "\""), // Curly double quotes
+        ("\u{2014}", "-"), ("\u{2013}", "-"),   // Em dash, en dash
+        ("\u{2026}", "..."),                     // Ellipsis
+        (":", ","), (";", ","),                  // Colons/semicolons to commas
+    ]
+    for (from, to) in replacements {
+        result = result.replacingOccurrences(of: from, with: to)
     }
 
-    return normalized
+    // Replace newlines with spaces
+    result = result.replacingOccurrences(of: "\n", with: " ")
+    result = result.replacingOccurrences(of: "\r", with: " ")
+
+    // Auto-prepend [S1] if text doesn't start with special markers
+    let trimmed = result.trimmingCharacters(in: .whitespaces)
+    if !trimmed.hasPrefix("[") && !trimmed.hasPrefix("(") &&
+       !trimmed.contains("S1") && !trimmed.contains("S2") {
+        result = "[S1] " + result
+    }
+
+    return result
 }
 
-func echoTtsTokenizerEncode(
-    _ text: String,
-    appendBOS: Bool = true,
-    normalize: Bool = true
-) -> MLXArray {
-    let normalized = normalize ? echoTtsNormalizeTextPrompt(text) : text
-    var tokens = normalized.utf8.map(Int32.init)
-    if appendBOS {
-        tokens.insert(0, at: 0)
+// MARK: - UTF-8 Byte Tokenization
+
+/// Encode text as UTF-8 bytes with BOS token.
+func echoTokenizerEncode(_ text: String) -> MLXArray {
+    let bytes = Array(text.utf8)
+    var tokens = [Int32](repeating: 0, count: bytes.count + 1)
+    tokens[0] = 0  // BOS token
+    for (i, byte) in bytes.enumerated() {
+        tokens[i + 1] = Int32(byte)
     }
     return MLXArray(tokens)
 }
 
-func echoTtsTextInputIDsAndMask(
-    _ texts: [String],
-    maxLength: Int?,
-    normalize: Bool = true,
-    padToMax: Bool = true
-) -> (inputIDs: MLXArray, mask: MLXArray, normalizedTexts: [String]) {
-    let normalizedTexts = texts.map { normalize ? echoTtsNormalizeTextPrompt($0) : $0 }
-    let encoded = normalizedTexts.map {
-        echoTtsTokenizerEncode($0, appendBOS: true, normalize: false).asArray(Int32.self)
+/// Batch encode texts with padding and attention masks.
+/// Returns (tokenIds: [B, maxLen], mask: [B, maxLen]).
+func echoGetTextInputIdsAndMask(
+    _ texts: [String], maxLength: Int, normalize: Bool = true
+) -> (MLXArray, MLXArray, [String]) {
+    var normalizedTexts: [String] = []
+    var encodedTexts: [MLXArray] = []
+
+    for text in texts {
+        let normalized = normalize ? echoNormalizeTextPrompt(text) : text
+        normalizedTexts.append(normalized)
+        let encoded = echoTokenizerEncode(normalized)
+        // Truncate to maxLength
+        let truncated = encoded.dim(0) > maxLength
+            ? encoded[..<maxLength]
+            : encoded
+        encodedTexts.append(truncated)
     }
 
-    let resolvedMaxLength = maxLength ?? encoded.map(\.count).max() ?? 0
-    let finalLength: Int
-    if padToMax {
-        finalLength = resolvedMaxLength
-    } else {
-        finalLength = encoded.map { min($0.count, resolvedMaxLength) }.max() ?? 0
-    }
+    // Find max length in batch
+    let maxLen = min(encodedTexts.map { $0.dim(0) }.max() ?? 0, maxLength)
 
-    var tokenValues = Array(repeating: Int32(0), count: texts.count * finalLength)
-    var maskValues = Array(repeating: false, count: texts.count * finalLength)
+    // Pad and create masks
+    var paddedTokens: [MLXArray] = []
+    var masks: [MLXArray] = []
 
-    for (row, sequence) in encoded.enumerated() {
-        let count = min(sequence.count, finalLength)
-        guard count > 0 else { continue }
-        let base = row * finalLength
-        tokenValues.replaceSubrange(base..<(base + count), with: sequence.prefix(count))
-        for index in 0 ..< count {
-            maskValues[base + index] = true
+    for encoded in encodedTexts {
+        let seqLen = encoded.dim(0)
+        if seqLen < maxLen {
+            let padding = MLXArray.zeros([maxLen - seqLen], type: Int32.self)
+            paddedTokens.append(MLX.concatenated([encoded, padding]))
+            let maskOnes = MLXArray.ones([seqLen], type: Int32.self)
+            let maskZeros = MLXArray.zeros([maxLen - seqLen], type: Int32.self)
+            masks.append(MLX.concatenated([maskOnes, maskZeros]))
+        } else {
+            paddedTokens.append(encoded)
+            masks.append(MLXArray.ones([maxLen], type: Int32.self))
         }
     }
 
-    let inputIDs = MLXArray(tokenValues).reshaped([texts.count, finalLength])
-    let mask = MLXArray(maskValues).reshaped([texts.count, finalLength])
-    return (inputIDs, mask, normalizedTexts)
+    let tokenIds = MLX.stacked(paddedTokens)  // [B, maxLen]
+    let mask = MLX.stacked(masks)              // [B, maxLen]
+
+    return (tokenIds, mask, normalizedTexts)
 }
