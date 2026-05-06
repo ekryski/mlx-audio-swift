@@ -39,7 +39,8 @@ public enum TTS {
         modelRepo: String,
         textProcessor: TextProcessor? = nil,
         hfToken: String? = nil,
-        cache: HubCache = .default
+        cache: HubCache = .default,
+        quantization: EchoTTSModel.QuantizationConfig? = nil
     ) async throws -> SpeechGenerationModel {
         if let modelDir = localModelDirectory(modelRepo) {
             let modelType = try localModelType(modelDir) ?? inferModelType(from: modelRepo)
@@ -62,7 +63,8 @@ public enum TTS {
         return try await loadResolvedModel(
             modelType: modelType,
             source: .repository(modelRepo, cache: cache),
-            textProcessor: textProcessor
+            textProcessor: textProcessor,
+            quantization: quantization
         )
     }
 
@@ -70,7 +72,8 @@ public enum TTS {
         modelRepo: String,
         modelType: String?,
         textProcessor: TextProcessor? = nil,
-        cache: HubCache = .default
+        cache: HubCache = .default,
+        quantization: EchoTTSModel.QuantizationConfig? = nil
     ) async throws -> SpeechGenerationModel {
         if let modelDir = localModelDirectory(modelRepo) {
             let localType = try localModelType(modelDir)
@@ -80,21 +83,24 @@ public enum TTS {
             return try await loadResolvedModel(
                 modelType: resolvedModelType,
                 source: .localDirectory(modelDir, repoHint: modelRepo),
-                textProcessor: textProcessor
+                textProcessor: textProcessor,
+                quantization: quantization
             )
         }
 
         return try await loadResolvedModel(
             modelType: modelType,
             source: .repository(modelRepo, cache: cache),
-            textProcessor: textProcessor
+            textProcessor: textProcessor,
+            quantization: quantization
         )
     }
 
     private static func loadResolvedModel(
         modelType: String?,
         source: ModelSource,
-        textProcessor: TextProcessor?
+        textProcessor: TextProcessor?,
+        quantization: EchoTTSModel.QuantizationConfig? = nil
     ) async throws -> SpeechGenerationModel {
         let resolvedType = normalizedModelType(modelType) ?? inferModelType(from: source.fallbackName)
         guard let resolvedType else {
@@ -120,7 +126,7 @@ public enum TTS {
             return try await load(
                 source,
                 modelType: resolvedType,
-                pretrained: { try await EchoTTSModel.fromPretrained($0, cache: $1) },
+                pretrained: { try await EchoTTSModel.fromPretrained($0, cache: $1, quantization: quantization) },
                 local: { modelDir, _ in try await EchoTTSModel.fromModelDirectory(modelDir) }
             )
         case "qwen3_tts":
