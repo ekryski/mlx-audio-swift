@@ -288,8 +288,41 @@ let package = Package(
                 "MLXAudioG2P",
             ],
             path: "Tests",
+            exclude: [
+                "Benchmarks"
+            ],
             resources: [
                 .copy("media")
+            ]
+        ),
+
+        // MARK: - Benchmarks (release-mode only; opt-in via scripts/benchmark.sh)
+        //
+        // Generic, model-comparison benchmarks across STT, TTS, codecs, VAD,
+        // LID, and STS. Driven by `MLX_AUDIO_BENCH_*` env vars set by the
+        // shell driver. App-specific pipeline benchmarks live in the Sam
+        // repo; LLM benchmarks live in mlx-swift-lm.
+        //
+        // Skipped in CI via `-skip-testing:MLXAudioBenchmarks`.
+        .testTarget(
+            name: "MLXAudioBenchmarks",
+            dependencies: [
+                "MLXAudioCore",
+                "MLXAudioCodecs",
+                "MLXAudioTTS",
+                "MLXAudioSTT",
+                "MLXAudioVAD",
+                "MLXAudioSTS",
+                "MLXAudioLID",
+                "MLXAudioG2P",
+                .product(name: "MLX", package: "mlx-swift"),
+                .product(name: "MLXNN", package: "mlx-swift"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
+                .product(name: "HuggingFace", package: "swift-huggingface"),
+            ],
+            path: "Tests/Benchmarks",
+            resources: [
+                .copy("Resources")
             ]
         ),
     ]
