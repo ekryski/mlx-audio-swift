@@ -1,0 +1,131 @@
+{
+  "version": "1.0",
+  "inputs": [
+    {
+      "id": "conv_001",
+      "text": "Sure, I can help you with that.",
+      "domain": "conversational",
+      "description": "Simple affirmative response"
+    },
+    {
+      "id": "conv_002",
+      "text": "That's a great question! Let me think about it for a moment.",
+      "domain": "conversational",
+      "description": "Enthusiastic response with pause"
+    },
+    {
+      "id": "conv_003",
+      "text": "I found three results that match your search. Would you like me to go through them?",
+      "domain": "conversational",
+      "description": "Multi-sentence with question"
+    },
+    {
+      "id": "conv_004",
+      "text": "Good morning! How can I help you today?",
+      "domain": "conversational",
+      "description": "Greeting with question"
+    },
+    {
+      "id": "conv_005",
+      "text": "I'm not entirely sure about that, but based on what I've seen, it looks like the best approach would be to start with a simple prototype and iterate from there.",
+      "domain": "conversational",
+      "description": "Long nuanced response"
+    },
+    {
+      "id": "list_001",
+      "text": "First, open Settings. Second, click Privacy. Third, enable the toggle.",
+      "domain": "list",
+      "description": "Three-step instruction list"
+    },
+    {
+      "id": "list_002",
+      "text": "Here are the top results: one, React with forty two percent market share. Two, Vue with twenty eight percent. Three, Angular with eighteen percent.",
+      "domain": "list",
+      "description": "Numbered list with statistics"
+    },
+    {
+      "id": "list_003",
+      "text": "To set up the project, you'll need to: install Node.js version eighteen or later, clone the repository, run npm install, and then start the development server with npm run dev.",
+      "domain": "list",
+      "description": "Setup instructions as flowing list"
+    },
+    {
+      "id": "url_001",
+      "text": "The file is at /Users/eric/Documents/report.pdf",
+      "domain": "url",
+      "description": "Unix file path"
+    },
+    {
+      "id": "url_002",
+      "text": "Check out the documentation at docs.example.com/api/v2/users",
+      "domain": "url",
+      "description": "URL with path segments"
+    },
+    {
+      "id": "url_003",
+      "text": "Save it as project-notes-2026.md in the planning directory.",
+      "domain": "url",
+      "description": "Filename with hyphens and extension"
+    },
+    {
+      "id": "url_004",
+      "text": "The config file is at ~/.sam/skills/system-info/SKILL.md",
+      "domain": "url",
+      "description": "Hidden directory path"
+    },
+    {
+      "id": "tech_001",
+      "text": "Run npm install dash dash save dev typescript at version five.",
+      "domain": "technical",
+      "description": "CLI command with flags"
+    },
+    {
+      "id": "tech_002",
+      "text": "The API returns a JSON object with a status code of two hundred and a data array containing the user records.",
+      "domain": "technical",
+      "description": "Technical API description"
+    },
+    {
+      "id": "tech_003",
+      "text": "I executed the command and it returned exit code zero. The output shows three new files were created in the build directory.",
+      "domain": "technical",
+      "description": "Command execution result"
+    },
+    {
+      "id": "emotional_001",
+      "text": "[laughs] That's a great one! I haven't heard that joke before.",
+      "domain": "emotional",
+      "description": "Laughter with enthusiastic response"
+    },
+    {
+      "id": "emotional_002",
+      "text": "[sighs] Unfortunately, the deployment failed again. Let me check the logs.",
+      "domain": "emotional",
+      "description": "Sigh with disappointing news"
+    },
+    {
+      "id": "emotional_003",
+      "text": "Hmm, [pause] that's an interesting approach. I think it could work if we adjust the parameters.",
+      "domain": "emotional",
+      "description": "Thoughtful pause mid-sentence"
+    },
+    {
+      "id": "filename_001",
+      "text": "report-final.pdf",
+      "domain": "filename",
+      "description": "Filename with hyphen and extension"
+    },
+    {
+      "id": "filename_002",
+      "text": "AppState.swift",
+      "domain": "filename",
+      "description": "CamelCase Swift filename"
+    },
+    {
+      "id": "filename_003",
+      "text": "02-17-2026-work-session.md",
+      "domain": "filename",
+      "description": "Date-based filename"
+    }
+  ]
+}

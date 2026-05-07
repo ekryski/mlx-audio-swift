@@ -1,0 +1,329 @@
+{
+  "version": "1.0",
+  "samples": [
+    {
+      "id": "clean_001",
+      "audioFile": "clean_001.wav",
+      "referenceText": "Sure, I can help you with that.",
+      "domain": "clean",
+      "condition": "clean",
+      "durationSeconds": 1.85,
+      "source": "synthetic"
+    },
+    {
+      "id": "clean_002",
+      "audioFile": "clean_002.wav",
+      "referenceText": "What's the weather like today?",
+      "domain": "clean",
+      "condition": "clean",
+      "durationSeconds": 1.43,
+      "source": "synthetic"
+    },
+    {
+      "id": "clean_003",
+      "audioFile": "clean_003.wav",
+      "referenceText": "Let me check my calendar for tomorrow afternoon.",
+      "domain": "clean",
+      "condition": "clean",
+      "durationSeconds": 2.71,
+      "source": "synthetic"
+    },
+    {
+      "id": "clean_004",
+      "audioFile": "clean_004.wav",
+      "referenceText": "I need to send an email to the marketing team about the quarterly report.",
+      "domain": "clean",
+      "condition": "clean",
+      "durationSeconds": 3.76,
+      "source": "synthetic"
+    },
+    {
+      "id": "clean_005",
+      "audioFile": "clean_005.wav",
+      "referenceText": "Can you remind me to pick up groceries at five thirty?",
+      "domain": "clean",
+      "condition": "clean",
+      "durationSeconds": 2.95,
+      "source": "synthetic"
+    },
+    {
+      "id": "coding_001",
+      "audioFile": "coding_001.wav",
+      "referenceText": "Open the file AppState dot swift.",
+      "domain": "coding",
+      "condition": "clean",
+      "durationSeconds": 2.05,
+      "source": "synthetic"
+    },
+    {
+      "id": "coding_002",
+      "audioFile": "coding_002.wav",
+      "referenceText": "Run git push origin main.",
+      "domain": "coding",
+      "condition": "clean",
+      "durationSeconds": 1.54,
+      "source": "synthetic"
+    },
+    {
+      "id": "coding_003",
+      "audioFile": "coding_003.wav",
+      "referenceText": "Add a new function called process recording that takes an audio URL parameter.",
+      "domain": "coding",
+      "condition": "clean",
+      "durationSeconds": 4.42,
+      "source": "synthetic"
+    },
+    {
+      "id": "coding_004",
+      "audioFile": "coding_004.wav",
+      "referenceText": "Import Foundation and SwiftUI at the top of the file.",
+      "domain": "coding",
+      "condition": "clean",
+      "durationSeconds": 3.05,
+      "source": "synthetic"
+    },
+    {
+      "id": "coding_005",
+      "audioFile": "coding_005.wav",
+      "referenceText": "Run npm install dash dash save dev typescript.",
+      "domain": "coding",
+      "condition": "clean",
+      "durationSeconds": 3.07,
+      "source": "synthetic"
+    },
+    {
+      "id": "medical_001",
+      "audioFile": "medical_001.wav",
+      "referenceText": "The patient is prescribed metformin five hundred milligrams twice daily.",
+      "domain": "medical",
+      "condition": "clean",
+      "durationSeconds": 4.02,
+      "source": "synthetic"
+    },
+    {
+      "id": "medical_002",
+      "audioFile": "medical_002.wav",
+      "referenceText": "Diagnosis indicates bilateral pneumonia with consolidation in the lower lobes.",
+      "domain": "medical",
+      "condition": "clean",
+      "durationSeconds": 4.56,
+      "source": "synthetic"
+    },
+    {
+      "id": "medical_003",
+      "audioFile": "medical_003.wav",
+      "referenceText": "Schedule a follow up appointment for the electrocardiogram results.",
+      "domain": "medical",
+      "condition": "clean",
+      "durationSeconds": 3.76,
+      "source": "synthetic"
+    },
+    {
+      "id": "medical_004",
+      "audioFile": "medical_004.wav",
+      "referenceText": "Blood pressure is one forty over ninety. Heart rate is seventy two beats per minute.",
+      "domain": "medical",
+      "condition": "clean",
+      "durationSeconds": 4.5,
+      "source": "synthetic"
+    },
+    {
+      "id": "medical_005",
+      "audioFile": "medical_005.wav",
+      "referenceText": "Administer amoxicillin two fifty milligrams every eight hours for ten days.",
+      "domain": "medical",
+      "condition": "clean",
+      "durationSeconds": 4.28,
+      "source": "synthetic"
+    },
+    {
+      "id": "short_001",
+      "audioFile": "short_001.wav",
+      "referenceText": "Stop.",
+      "domain": "shortCommand",
+      "condition": "clean",
+      "durationSeconds": 0.53,
+      "source": "synthetic"
+    },
+    {
+      "id": "short_002",
+      "audioFile": "short_002.wav",
+      "referenceText": "Hey Sam.",
+      "domain": "shortCommand",
+      "condition": "clean",
+      "durationSeconds": 0.68,
+      "source": "synthetic"
+    },
+    {
+      "id": "short_003",
+      "audioFile": "short_003.wav",
+      "referenceText": "Yes.",
+      "domain": "shortCommand",
+      "condition": "clean",
+      "durationSeconds": 0.48,
+      "source": "synthetic"
+    },
+    {
+      "id": "short_004",
+      "audioFile": "short_004.wav",
+      "referenceText": "Cancel that.",
+      "domain": "shortCommand",
+      "condition": "clean",
+      "durationSeconds": 0.8,
+      "source": "synthetic"
+    },
+    {
+      "id": "short_005",
+      "audioFile": "short_005.wav",
+      "referenceText": "Thank you.",
+      "domain": "shortCommand",
+      "condition": "clean",
+      "durationSeconds": 0.64,
+      "source": "synthetic"
+    },
+    {
+      "id": "short_006",
+      "audioFile": "short_006.wav",
+      "referenceText": "New line.",
+      "domain": "shortCommand",
+      "condition": "clean",
+      "durationSeconds": 0.65,
+      "source": "synthetic"
+    },
+    {
+      "id": "url_001",
+      "audioFile": "url_001.wav",
+      "referenceText": "The file is report dash final dot PDF.",
+      "domain": "urls",
+      "condition": "clean",
+      "durationSeconds": 2.55,
+      "source": "synthetic"
+    },
+    {
+      "id": "url_002",
+      "audioFile": "url_002.wav",
+      "referenceText": "Check out the website at ycombinator dot com.",
+      "domain": "urls",
+      "condition": "clean",
+      "durationSeconds": 2.7,
+      "source": "synthetic"
+    },
+    {
+      "id": "url_003",
+      "audioFile": "url_003.wav",
+      "referenceText": "The path is Users slash eric slash Documents slash Sam.",
+      "domain": "urls",
+      "condition": "clean",
+      "durationSeconds": 3.26,
+      "source": "synthetic"
+    },
+    {
+      "id": "url_004",
+      "audioFile": "url_004.wav",
+      "referenceText": "Save it as project dash notes dot markdown.",
+      "domain": "urls",
+      "condition": "clean",
+      "durationSeconds": 2.62,
+      "source": "synthetic"
+    },
+    {
+      "id": "url_005",
+      "audioFile": "url_005.wav",
+      "referenceText": "Open the config dot JSON file in the source directory.",
+      "domain": "urls",
+      "condition": "clean",
+      "durationSeconds": 3.2,
+      "source": "synthetic"
+    },
+    {
+      "id": "slang_001",
+      "audioFile": "slang_001.wav",
+      "referenceText": "LOL that's hilarious.",
+      "domain": "slang",
+      "condition": "clean",
+      "durationSeconds": 1.48,
+      "source": "synthetic"
+    },
+    {
+      "id": "slang_002",
+      "audioFile": "slang_002.wav",
+      "referenceText": "BRB one sec.",
+      "domain": "slang",
+      "condition": "clean",
+      "durationSeconds": 1.21,
+      "source": "synthetic"
+    },
+    {
+      "id": "slang_003",
+      "audioFile": "slang_003.wav",
+      "referenceText": "That's fire. No cap.",
+      "domain": "slang",
+      "condition": "clean",
+      "durationSeconds": 1.62,
+      "source": "synthetic"
+    },
+    {
+      "id": "slang_004",
+      "audioFile": "slang_004.wav",
+      "referenceText": "TLDR just send me the summary.",
+      "domain": "slang",
+      "condition": "clean",
+      "durationSeconds": 2.16,
+      "source": "synthetic"
+    },
+    {
+      "id": "slang_005",
+      "audioFile": "slang_005.wav",
+      "referenceText": "FYI the meeting got pushed to three PM.",
+      "domain": "slang",
+      "condition": "clean",
+      "durationSeconds": 2.43,
+      "source": "synthetic"
+    },
+    {
+      "id": "numbers_001",
+      "audioFile": "numbers_001.wav",
+      "referenceText": "February seventeenth twenty twenty six.",
+      "domain": "numbers",
+      "condition": "clean",
+      "durationSeconds": 2.49,
+      "source": "synthetic"
+    },
+    {
+      "id": "numbers_002",
+      "audioFile": "numbers_002.wav",
+      "referenceText": "The price is forty two dollars and fifty cents.",
+      "domain": "numbers",
+      "condition": "clean",
+      "durationSeconds": 2.72,
+      "source": "synthetic"
+    },
+    {
+      "id": "numbers_003",
+      "audioFile": "numbers_003.wav",
+      "referenceText": "Call me at five five five zero one two three.",
+      "domain": "numbers",
+      "condition": "clean",
+      "durationSeconds": 2.73,
+      "source": "synthetic"
+    },
+    {
+      "id": "numbers_004",
+      "audioFile": "numbers_004.wav",
+      "referenceText": "The temperature is seventy two degrees Fahrenheit.",
+      "domain": "numbers",
+      "condition": "clean",
+      "durationSeconds": 2.67,
+      "source": "synthetic"
+    },
+    {
+      "id": "numbers_005",
+      "audioFile": "numbers_005.wav",
+      "referenceText": "Version three point fourteen point one was released last Tuesday.",
+      "domain": "numbers",
+      "condition": "clean",
+      "durationSeconds": 3.52,
+      "source": "synthetic"
+    }
+  ]
+}

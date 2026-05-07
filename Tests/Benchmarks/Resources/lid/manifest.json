@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "samples": [
+    {
+      "id": "intention_en",
+      "audioFile": "intention.wav",
+      "referenceLanguage": "en",
+      "domain": "clean",
+      "condition": "clean",
+      "source": "media-fixture"
+    },
+    {
+      "id": "conversational_en",
+      "audioFile": "conversational_a.wav",
+      "referenceLanguage": "en",
+      "domain": "clean",
+      "condition": "clean",
+      "source": "media-fixture"
+    },
+    {
+      "id": "conversational_fr",
+      "audioFile": "conversational_fr.wav",
+      "referenceLanguage": "fr",
+      "domain": "clean",
+      "condition": "clean",
+      "source": "media-fixture"
+    }
+  ]
+}

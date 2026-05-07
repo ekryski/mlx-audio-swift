@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "samples": [
+    {
+      "id": "multi_speaker",
+      "audioFile": "multi_speaker.wav",
+      "domain": "diarization",
+      "condition": "clean",
+      "source": "media-fixture"
+    },
+    {
+      "id": "false_turn",
+      "audioFile": "false-turn.wav",
+      "domain": "turn-detection",
+      "condition": "clean",
+      "source": "media-fixture"
+    }
+  ]
+}
