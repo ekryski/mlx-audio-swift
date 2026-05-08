@@ -1,5 +1,5 @@
 {
-  "originHash" : "81a561ca652a01ce2cac9702b85a6efcfa4edcb5a7b7c22eec08bbad45be1e4b",
+  "originHash" : "b3847ed4ab613c1a915b26db222c8b22ad990b5fb0274a60803191d7a0c4a939",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ekryski/mlx-swift",
       "state" : {
-        "revision" : "9019c347d62467de0568e73321177348698d6121",
-        "version" : "0.32.0-alpha"
+        "revision" : "179f971f18274991f9d9e1424f2714a5bf3d9c22",
+        "version" : "0.32.1-alpha"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ekryski/mlx-swift-lm",
       "state" : {
-        "revision" : "7a5cf81b309e3d3ea9df39eb95f18f741359f3cf",
-        "version" : "3.32.0-alpha"
+        "revision" : "8dd3f7ce07b1d7bf227d1dd29140eebb72b03e9d",
+        "version" : "3.32.1-alpha"
       }
     },
     {
