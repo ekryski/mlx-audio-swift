@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "samples": [
+    {
+      "id": "intention",
+      "audioFile": "intention.wav",
+      "domain": "clean",
+      "condition": "clean",
+      "source": "media-fixture"
+    },
+    {
+      "id": "conversational_a",
+      "audioFile": "conversational_a.wav",
+      "domain": "clean",
+      "condition": "clean",
+      "source": "media-fixture"
+    },
+    {
+      "id": "noisy_audio",
+      "audioFile": "noisy_audio.wav",
+      "domain": "clean",
+      "condition": "noisy",
+      "source": "media-fixture"
+    }
+  ]
+}

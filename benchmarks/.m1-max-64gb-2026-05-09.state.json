@@ -1,0 +1,3197 @@
+{
+  "branch" : "ek\/audio-benchmarks",
+  "chip" : "Apple M1 Max (applegpu_g13s)",
+  "commit" : "`900b4bc add benchmark fixtures, scripts, README, CI skip`",
+  "createdAt" : "2026-05-09T19:02:12Z",
+  "gpuArch" : "applegpu_g13s",
+  "gpuLimit" : "52GB",
+  "models" : [
+    {
+      "displayName" : "SNAC 24kHz",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ encode-decode",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/snac_24khz"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "0.04s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "3-level codebook; 24kHz output"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "decodeRTF" : 8.039057103875438,
+                  "encodeRTF" : 2.5377111829637364,
+                  "fixture" : "intention",
+                  "inputDurationSec" : 1.52,
+                  "peakGPU" : 467356936,
+                  "pipeline" : "codec",
+                  "processingTimeSec" : 0.7880418300628662,
+                  "realTimeFactor" : 1.9288316203706366,
+                  "residentMB" : 164.015625,
+                  "siSnrDB" : 6.232111930847168,
+                  "workload" : "encode-decode"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "decodeRTF" : 24.707924220454945,
+                  "encodeRTF" : 53.64515907083409,
+                  "fixture" : "conversational_a",
+                  "inputDurationSec" : 13.258666666666667,
+                  "peakGPU" : 3239202060,
+                  "pipeline" : "codec",
+                  "processingTimeSec" : 0.7837709188461304,
+                  "realTimeFactor" : 16.916507550683445,
+                  "residentMB" : 169.015625,
+                  "siSnrDB" : -3.7406656742095947,
+                  "workload" : "encode-decode"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "decodeRTF" : 6.379410204369686,
+                  "encodeRTF" : 20.182490576533084,
+                  "fixture" : "noisy_audio",
+                  "inputDurationSec" : 10,
+                  "peakGPU" : 4839136400,
+                  "pipeline" : "codec",
+                  "processingTimeSec" : 2.063022017478943,
+                  "realTimeFactor" : 4.847258010469619,
+                  "residentMB" : 158.890625,
+                  "siSnrDB" : -3.6046993732452393,
+                  "workload" : "encode-decode"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "decodeRTF" : 19.08636477399963,
+                  "encodeRTF" : 17.315029943209748,
+                  "fixture" : "intention",
+                  "inputDurationSec" : 1.52,
+                  "peakGPU" : 467356936,
+                  "pipeline" : "codec",
+                  "processingTimeSec" : 0.16742300987243652,
+                  "realTimeFactor" : 9.078799868417867,
+                  "residentMB" : 163.84375,
+                  "siSnrDB" : 6.234604835510254,
+                  "workload" : "encode-decode"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "decodeRTF" : 30.488528952908368,
+                  "encodeRTF" : 62.38081944584662,
+                  "fixture" : "conversational_a",
+                  "inputDurationSec" : 13.258666666666667,
+                  "peakGPU" : 3404882160,
+                  "pipeline" : "codec",
+                  "processingTimeSec" : 0.6474179029464722,
+                  "realTimeFactor" : 20.479301864105047,
+                  "residentMB" : 168.890625,
+                  "siSnrDB" : -3.7379214763641357,
+                  "workload" : "encode-decode"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "decodeRTF" : 15.407917457165219,
+                  "encodeRTF" : 31.638254772078135,
+                  "fixture" : "noisy_audio",
+                  "inputDurationSec" : 10,
+                  "peakGPU" : 4839136400,
+                  "pipeline" : "codec",
+                  "processingTimeSec" : 0.9650900363922119,
+                  "realTimeFactor" : 10.361727531021787,
+                  "residentMB" : 172.15625,
+                  "siSnrDB" : -3.6189146041870117,
+                  "workload" : "encode-decode"
+                }
+              ],
+              "workload" : "encode-decode"
+            }
+          ],
+          "pipeline" : "codec"
+        }
+      ],
+      "repoId" : "mlx-community\/snac_24khz"
+    },
+    {
+      "displayName" : "Kokoro 82M",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ synthesis \/ voice=af_heart",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/Kokoro-82M-bf16"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Voice",
+                  "af_heart"
+                ],
+                [
+                  "Load time",
+                  "0.11s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "StyleTTS2 family; default voice af_heart; 24kHz output"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 851.7413269049366,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 2.55,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 399396616,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.036396026611328125,
+                  "realTimeFactor" : 70.06259301959962,
+                  "residentMB" : 428.203125,
+                  "samplesPerSec" : 1681502.2324703909,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 1591.5497892443468,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 4.05,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 450273287,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.037699103355407715,
+                  "realTimeFactor" : 107.42961077399342,
+                  "residentMB" : 433.21875,
+                  "samplesPerSec" : 2578310.658575842,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 1920.855638106221,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 5.225,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 497691644,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.04320991039276123,
+                  "realTimeFactor" : 120.9213338446386,
+                  "residentMB" : 437.9375,
+                  "samplesPerSec" : 2902112.0122713265,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 143.75346079388473,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 2.175,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 400079188,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.21564698219299316,
+                  "realTimeFactor" : 10.08592829763546,
+                  "residentMB" : 530.578125,
+                  "samplesPerSec" : 242062.27914325104,
+                  "ttftMs" : 215.6294584274292,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 328.722130478101,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 3.425,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 458877372,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.18252497911453247,
+                  "realTimeFactor" : 18.764554948124932,
+                  "residentMB" : 546.78125,
+                  "samplesPerSec" : 450349.3187549983,
+                  "ttftMs" : 182.49601125717163,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 345.4461381602041,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 4.6,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 490657268,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.2402690052986145,
+                  "realTimeFactor" : 19.145207657071552,
+                  "residentMB" : 552.234375,
+                  "samplesPerSec" : 459484.9837697173,
+                  "ttftMs" : 240.24248123168945,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 178.70603684289875,
+                  "fixture" : "conv_004",
+                  "inputCharacters" : 39,
+                  "outputDurationSec" : 2.675,
+                  "outputPreview" : "Good morning! How can I help you today?",
+                  "peakGPU" : 490657268,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.21823549270629883,
+                  "realTimeFactor" : 12.257401244993696,
+                  "residentMB" : 514.140625,
+                  "samplesPerSec" : 294177.62987984874,
+                  "ttftMs" : 218.20050477981567,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 625.201506527299,
+                  "fixture" : "conv_005",
+                  "inputCharacters" : 160,
+                  "outputDurationSec" : 9.25,
+                  "outputPreview" : "I'm not entirely sure about that, but based on what I've seen, it looks like the best approach would be to start with a ",
+                  "peakGPU" : 677894712,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.255917489528656,
+                  "realTimeFactor" : 36.14446209610947,
+                  "residentMB" : 530.53125,
+                  "samplesPerSec" : 867467.0903066273,
+                  "ttftMs" : 255.9030055999756,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 319.46691910536595,
+                  "fixture" : "list_001",
+                  "inputCharacters" : 70,
+                  "outputDurationSec" : 5.35,
+                  "outputPreview" : "First, open Settings. Second, click Privacy. Third, enable the toggle.",
+                  "peakGPU" : 677894712,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.2191150188446045,
+                  "realTimeFactor" : 24.41640024591011,
+                  "residentMB" : 532.34375,
+                  "samplesPerSec" : 585993.6059018427,
+                  "ttftMs" : 219.08748149871826,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/Kokoro-82M-bf16"
+    },
+    {
+      "displayName" : "Parakeet TDT 0.6B v2",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ transcription",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/parakeet-tdt-0.6b-v2"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "0.51s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Batch size",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "TDT decoder; English-only; supports batched inference"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_001",
+                  "inputDurationSec" : 1.8459375,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.047561049461364746,
+                  "realTimeFactor" : 0.02576525449066653,
+                  "residentMB" : 2546.0625,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 147.17925864285874,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_002",
+                  "inputDurationSec" : 1.4301875,
+                  "outputPreview" : "What's the weather like today?",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.03447592258453369,
+                  "realTimeFactor" : 0.024105876036906834,
+                  "residentMB" : 2547.40625,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 145.02875123182517,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_003",
+                  "inputDurationSec" : 2.7095,
+                  "outputPreview" : "Let me check my calendar for tomorrow afternoon.",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.05407404899597168,
+                  "realTimeFactor" : 0.0199572057560331,
+                  "residentMB" : 2548.640625,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 147.94527409249437,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_001",
+                  "inputDurationSec" : 1.8459375,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.032150447368621826,
+                  "realTimeFactor" : 0.01741686669706955,
+                  "residentMB" : 2549.53125,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 217.72636379647568,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_002",
+                  "inputDurationSec" : 1.4301875,
+                  "outputPreview" : "What's the weather like today?",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.03243553638458252,
+                  "realTimeFactor" : 0.022679219602032966,
+                  "residentMB" : 2551.296875,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 154.15191352829405,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_003",
+                  "inputDurationSec" : 2.7095,
+                  "outputPreview" : "Let me check my calendar for tomorrow afternoon.",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.04493248462677002,
+                  "realTimeFactor" : 0.016583312281516892,
+                  "residentMB" : 2552.6875,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 178.04490596172673,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_004",
+                  "inputDurationSec" : 3.7578125,
+                  "outputPreview" : "I need to send an email to the marketing team about the quarterly report.",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.04616802930831909,
+                  "realTimeFactor" : 0.01228587890117431,
+                  "residentMB" : 2553.9375,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 303.240147126603,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.2037037037037037,
+                  "fixture" : "clean_005",
+                  "inputDurationSec" : 2.9486875,
+                  "outputPreview" : "Can you remind me to pick up groceries at 5.30?",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.04627901315689087,
+                  "realTimeFactor" : 0.01569478391890998,
+                  "residentMB" : 2555.03125,
+                  "semanticWER" : 0.18181818181818182,
+                  "wer" : 0.18181818181818182,
+                  "wordsPerSec" : 216.0806663292261,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.18181818181818182,
+                  "fixture" : "coding_001",
+                  "inputDurationSec" : 2.04825,
+                  "outputPreview" : "Open the file app state.swift.",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.03864395618438721,
+                  "realTimeFactor" : 0.0188668161525142,
+                  "residentMB" : 2555.796875,
+                  "semanticWER" : 0.5,
+                  "wer" : 0.5,
+                  "wordsPerSec" : 129.38633860733137,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_001",
+                  "inputDurationSec" : 1.8459375,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.030017495155334473,
+                  "realTimeFactor" : 0.01626138217319626,
+                  "residentMB" : 2545.0625,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 233.19733921089733,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_002",
+                  "inputDurationSec" : 1.4301875,
+                  "outputPreview" : "What's the weather like today?",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.029735445976257324,
+                  "realTimeFactor" : 0.020791292034266363,
+                  "residentMB" : 2546.953125,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 168.14948744983744,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_003",
+                  "inputDurationSec" : 2.7095,
+                  "outputPreview" : "Let me check my calendar for tomorrow afternoon.",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.04073399305343628,
+                  "realTimeFactor" : 0.015033767504497614,
+                  "residentMB" : 2548.359375,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 196.39616448859604,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_004",
+                  "inputDurationSec" : 3.7578125,
+                  "outputPreview" : "I need to send an email to the marketing team about the quarterly report.",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.043271005153656006,
+                  "realTimeFactor" : 0.011514945238394945,
+                  "residentMB" : 2549.765625,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 323.5422877348419,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.2037037037037037,
+                  "fixture" : "clean_005",
+                  "inputDurationSec" : 2.9486875,
+                  "outputPreview" : "Can you remind me to pick up groceries at 5.30?",
+                  "peakGPU" : 3748857388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.04235255718231201,
+                  "realTimeFactor" : 0.014363189446935971,
+                  "residentMB" : 2550.765625,
+                  "semanticWER" : 0.18181818181818182,
+                  "wer" : 0.18181818181818182,
+                  "wordsPerSec" : 236.1132518386958,
+                  "workload" : "transcription"
+                }
+              ],
+              "workload" : "transcription"
+            }
+          ],
+          "pipeline" : "stt"
+        }
+      ],
+      "repoId" : "mlx-community\/parakeet-tdt-0.6b-v2"
+    },
+    {
+      "displayName" : "Sortformer Streaming 4spk",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "fp16 \/ default \/ diarization",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/diar_streaming_sortformer_4spk-v2.1-fp16"
+                ],
+                [
+                  "Quantization",
+                  "fp16"
+                ],
+                [
+                  "Load time",
+                  "0.10s"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Speaker diarization; offline + streaming"
+                ]
+              ],
+              "quantization" : "fp16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "multi_speaker",
+                  "inputDurationSec" : 30,
+                  "outputPreview" : "9 segments",
+                  "peakGPU" : 784173000,
+                  "pipeline" : "vad",
+                  "processingTimeSec" : 2.2788740396499634,
+                  "realTimeFactor" : 13.164395871835032,
+                  "residentMB" : 336.796875,
+                  "workload" : "diarization"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "false_turn",
+                  "inputDurationSec" : 10.1578125,
+                  "outputPreview" : "1 segments",
+                  "peakGPU" : 784173000,
+                  "pipeline" : "vad",
+                  "processingTimeSec" : 0.5602580308914185,
+                  "realTimeFactor" : 18.130596867729057,
+                  "residentMB" : 341.015625,
+                  "workload" : "diarization"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "multi_speaker",
+                  "inputDurationSec" : 30,
+                  "outputPreview" : "9 segments",
+                  "peakGPU" : 1108032156,
+                  "pipeline" : "vad",
+                  "processingTimeSec" : 0.5112239122390747,
+                  "realTimeFactor" : 58.68270102743248,
+                  "residentMB" : 338.90625,
+                  "workload" : "diarization"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "false_turn",
+                  "inputDurationSec" : 10.1578125,
+                  "outputPreview" : "1 segments",
+                  "peakGPU" : 1108032156,
+                  "pipeline" : "vad",
+                  "processingTimeSec" : 0.155595064163208,
+                  "realTimeFactor" : 65.28364221981481,
+                  "residentMB" : 342.84375,
+                  "workload" : "diarization"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "multi_speaker",
+                  "inputDurationSec" : 30,
+                  "outputPreview" : "9 segments",
+                  "peakGPU" : 945209546,
+                  "pipeline" : "vad",
+                  "processingTimeSec" : 0.5211279392242432,
+                  "realTimeFactor" : 57.56743736414964,
+                  "residentMB" : 338.484375,
+                  "workload" : "diarization"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "false_turn",
+                  "inputDurationSec" : 10.1578125,
+                  "outputPreview" : "1 segments",
+                  "peakGPU" : 945209546,
+                  "pipeline" : "vad",
+                  "processingTimeSec" : 0.19632303714752197,
+                  "realTimeFactor" : 51.740298273641564,
+                  "residentMB" : 343.203125,
+                  "workload" : "diarization"
+                }
+              ],
+              "workload" : "diarization"
+            }
+          ],
+          "pipeline" : "vad"
+        }
+      ],
+      "repoId" : "mlx-community\/diar_streaming_sortformer_4spk-v2.1-fp16"
+    },
+    {
+      "displayName" : "Qwen3 ASR 0.6B",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "4bit \/ default \/ transcription",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/Qwen3-ASR-0.6B-4bit"
+                ],
+                [
+                  "Quantization",
+                  "4bit"
+                ],
+                [
+                  "Load time",
+                  "0.62s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Batch size",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "LLM-style decoder; multilingual"
+                ]
+              ],
+              "quantization" : "4bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_001",
+                  "inputDurationSec" : 1.8459375,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 1467602400,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.16510796546936035,
+                  "realTimeFactor" : 0.08944396301031879,
+                  "residentMB" : 836.375,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 42.396500859911654,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_002",
+                  "inputDurationSec" : 1.4301875,
+                  "outputPreview" : "What's the weather like today?",
+                  "peakGPU" : 1467602400,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.15059900283813477,
+                  "realTimeFactor" : 0.10530018115676075,
+                  "residentMB" : 837.609375,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 33.200751039328246,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_003",
+                  "inputDurationSec" : 2.7095,
+                  "outputPreview" : "Let me check my calendar for tomorrow afternoon.",
+                  "peakGPU" : 1487605188,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.16919898986816406,
+                  "realTimeFactor" : 0.06244657311982435,
+                  "residentMB" : 838.203125,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 47.28160615044697,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_004",
+                  "inputDurationSec" : 3.7578125,
+                  "outputPreview" : "I need to send an email to the marketing team about the quarterly report.",
+                  "peakGPU" : 1512361896,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.22780096530914307,
+                  "realTimeFactor" : 0.06062063110097778,
+                  "residentMB" : 838.921875,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 61.457158361910125,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.2037037037037037,
+                  "fixture" : "clean_005",
+                  "inputDurationSec" : 2.9486875,
+                  "outputPreview" : "Can you remind me to pick up groceries at 5:30?",
+                  "peakGPU" : 1512361896,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.28162896633148193,
+                  "realTimeFactor" : 0.09550994004331823,
+                  "residentMB" : 839.265625,
+                  "semanticWER" : 0.18181818181818182,
+                  "wer" : 0.18181818181818182,
+                  "wordsPerSec" : 35.507711192711035,
+                  "workload" : "transcription"
+                }
+              ],
+              "workload" : "transcription"
+            },
+            {
+              "key" : "bf16 \/ default \/ transcription",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/Qwen3-ASR-0.6B-bf16"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "0.69s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Batch size",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "LLM-style decoder; multilingual"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_001",
+                  "inputDurationSec" : 1.8459375,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 2324318600,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.15805399417877197,
+                  "realTimeFactor" : 0.08562261408025568,
+                  "residentMB" : 1656.046875,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 44.28866246861455,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_002",
+                  "inputDurationSec" : 1.4301875,
+                  "outputPreview" : "What's the weather like today?",
+                  "peakGPU" : 2324318600,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.149122953414917,
+                  "realTimeFactor" : 0.10426811408638167,
+                  "residentMB" : 1657.671875,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 33.52937884812468,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_003",
+                  "inputDurationSec" : 2.7095,
+                  "outputPreview" : "Let me check my calendar for tomorrow afternoon.",
+                  "peakGPU" : 2344321388,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.16084802150726318,
+                  "realTimeFactor" : 0.05936446632488031,
+                  "residentMB" : 1658.265625,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 49.73639044505596,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_004",
+                  "inputDurationSec" : 3.7578125,
+                  "outputPreview" : "I need to send an email to the marketing team about the quarterly report.",
+                  "peakGPU" : 2369078096,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.22702109813690186,
+                  "realTimeFactor" : 0.060413098880506104,
+                  "residentMB" : 1659.484375,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 61.66827715526906,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.2037037037037037,
+                  "fixture" : "clean_005",
+                  "inputDurationSec" : 2.9486875,
+                  "outputPreview" : "Can you remind me to pick up groceries at 5:30?",
+                  "peakGPU" : 2369078096,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.20523393154144287,
+                  "realTimeFactor" : 0.06960179114994142,
+                  "residentMB" : 1660.046875,
+                  "semanticWER" : 0.18181818181818182,
+                  "wer" : 0.18181818181818182,
+                  "wordsPerSec" : 48.72488640106132,
+                  "workload" : "transcription"
+                }
+              ],
+              "workload" : "transcription"
+            }
+          ],
+          "pipeline" : "stt"
+        }
+      ],
+      "repoId" : "mlx-community\/Qwen3-ASR-0.6B-4bit"
+    },
+    {
+      "displayName" : "Echo TTS",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "base \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/echo-tts-base"
+                ],
+                [
+                  "Quantization",
+                  "base"
+                ],
+                [
+                  "Load time",
+                  "1.23s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Higher-fidelity than Kokoro at the cost of speed"
+                ]
+              ],
+              "quantization" : "base",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 5.172626348375127,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 1.4628571428571429,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 22005621196,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 5.99308705329895,
+                  "realTimeFactor" : 0.24409075487263274,
+                  "residentMB" : 101.140625,
+                  "samplesPerSec" : 10764.402289883103,
+                  "ttftMs" : 5992.957949638367,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 12.267209236689185,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 2.7399546485260773,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 22005621196,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 4.891088008880615,
+                  "realTimeFactor" : 0.5601932828751428,
+                  "residentMB" : 100.25,
+                  "samplesPerSec" : 24704.523774793794,
+                  "ttftMs" : 4890.951037406921,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 6.614584677617327,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 5.224489795918367,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 22005621196,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 12.548028945922852,
+                  "realTimeFactor" : 0.4163593994271049,
+                  "residentMB" : 104.359375,
+                  "samplesPerSec" : 18361.44951473533,
+                  "ttftMs" : 6785.953998565674,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 5.8862807683694225,
+                  "fixture" : "conv_004",
+                  "inputCharacters" : 39,
+                  "outputDurationSec" : 2.507755102040816,
+                  "outputPreview" : "Good morning! How can I help you today?",
+                  "peakGPU" : 22005621196,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 6.62557590007782,
+                  "realTimeFactor" : 0.3784961699723886,
+                  "residentMB" : 108.4375,
+                  "samplesPerSec" : 16691.68109578234,
+                  "ttftMs" : 6625.509977340698,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/echo-tts-base"
+    },
+    {
+      "displayName" : "Orpheus 3B",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ synthesis \/ voice=tara",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/orpheus-3b-0.1-ft-bf16"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "2.41s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Voice",
+                  "tara"
+                ],
+                [
+                  "Notes",
+                  "Llama-backbone TTS"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 4.4843912408646345,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 3.1573333333333333,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 7659931268,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 6.912866950035095,
+                  "realTimeFactor" : 0.45673283691903027,
+                  "residentMB" : 6684.203125,
+                  "samplesPerSec" : 10961.588086056727,
+                  "ttftMs" : 6912.848949432373,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 5.769056073835998,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 4.778666666666667,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 7936516308,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 10.400314927101135,
+                  "realTimeFactor" : 0.459473265969516,
+                  "residentMB" : 6685.4375,
+                  "samplesPerSec" : 11027.358383268382,
+                  "ttftMs" : 10400.296926498413,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 8.514707744084685,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 4.437333333333333,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 7936516308,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 9.747838973999023,
+                  "realTimeFactor" : 0.4552120059809451,
+                  "residentMB" : 6685.515625,
+                  "samplesPerSec" : 10925.088143542684,
+                  "ttftMs" : 9747.828960418701,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/orpheus-3b-0.1-ft-bf16"
+    },
+    {
+      "displayName" : "Chatterbox",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "fp16-turbo \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/chatterbox-turbo-fp16"
+                ],
+                [
+                  "Quantization",
+                  "fp16-turbo"
+                ],
+                [
+                  "Load time",
+                  "0.81s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Voice cloning; reference-audio conditioned"
+                ]
+              ],
+              "quantization" : "fp16-turbo",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 52.63355087988455,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 1.96,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 5298271284,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.5889779329299927,
+                  "realTimeFactor" : 3.327798700792701,
+                  "residentMB" : 3045.5625,
+                  "samplesPerSec" : 79867.16881902481,
+                  "ttftMs" : 588.8810157775879,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 66.64134387343405,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 3.36,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 5298271284,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.9003419876098633,
+                  "realTimeFactor" : 3.731915256912307,
+                  "residentMB" : 3050.796875,
+                  "samplesPerSec" : 89565.96616589537,
+                  "ttftMs" : 900.2639055252075,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 76.581766474021,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 3.88,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 5298271284,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 1.0838088989257812,
+                  "realTimeFactor" : 3.579966914689174,
+                  "residentMB" : 3055.53125,
+                  "samplesPerSec" : 85919.20595254017,
+                  "ttftMs" : 1083.770990371704,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            },
+            {
+              "key" : "fp16 \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/Chatterbox-TTS-fp16"
+                ],
+                [
+                  "Quantization",
+                  "fp16"
+                ],
+                [
+                  "Load time",
+                  "0.77s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Voice cloning; reference-audio conditioned"
+                ]
+              ],
+              "quantization" : "fp16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 24.08352291060288,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 2.04,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 5313733712,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 1.287187099456787,
+                  "realTimeFactor" : 1.5848511850848348,
+                  "residentMB" : 3221.734375,
+                  "samplesPerSec" : 38036.428442036035,
+                  "ttftMs" : 1287.1490716934204,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 24.515151431020847,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 4.8,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 5424831368,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 2.447466015815735,
+                  "realTimeFactor" : 1.9612121144816677,
+                  "residentMB" : 3231.765625,
+                  "samplesPerSec" : 47069.090747560025,
+                  "ttftMs" : 2447.429060935974,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/chatterbox-turbo-fp16"
+    },
+    {
+      "displayName" : "Marvis TTS (CSM\/Sesame)",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "8bit \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "Marvis-AI\/marvis-tts-250m-v0.2-MLX-8bit"
+                ],
+                [
+                  "Quantization",
+                  "8bit"
+                ],
+                [
+                  "Load time",
+                  "16.61s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "CSM-based; voice cloning via reference audio"
+                ]
+              ],
+              "quantization" : "8bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 13.881251910330029,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 1.68,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 2851705690,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 2.2332279682159424,
+                  "realTimeFactor" : 0.75227429707595,
+                  "residentMB" : 1189.59375,
+                  "samplesPerSec" : 18054.5831298228,
+                  "ttftMs" : 2232.8490018844604,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 11.545344317437072,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 4.8,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 3110606848,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 5.196900010108948,
+                  "realTimeFactor" : 0.9236275453949657,
+                  "residentMB" : 1198.828125,
+                  "samplesPerSec" : 22167.06108947918,
+                  "ttftMs" : 2260.003089904785,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 14.93116714957558,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 5.36,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 3110606848,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 5.558842062950134,
+                  "realTimeFactor" : 0.9642295894183749,
+                  "residentMB" : 1201.59375,
+                  "samplesPerSec" : 23141.510146040997,
+                  "ttftMs" : 2082.797050476074,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            },
+            {
+              "key" : "4bit \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "Marvis-AI\/marvis-tts-250m-v0.2-MLX-4bit"
+                ],
+                [
+                  "Quantization",
+                  "4bit"
+                ],
+                [
+                  "Load time",
+                  "9.87s"
+                ],
+                [
+                  "Warmup runs",
+                  "0"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "CSM-based; voice cloning via reference audio"
+                ]
+              ],
+              "quantization" : "4bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 27.82327528375163,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 2.24,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 2610320218,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 1.1141750812530518,
+                  "realTimeFactor" : 2.010456020503344,
+                  "residentMB" : 945.0625,
+                  "samplesPerSec" : 48250.94449208025,
+                  "ttftMs" : 967.4509763717651,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 43.32546160808036,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 3.04,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 3039485216,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 1.3848669528961182,
+                  "realTimeFactor" : 2.1951567214760717,
+                  "residentMB" : 953.03125,
+                  "samplesPerSec" : 52683.76131542572,
+                  "ttftMs" : 925.8038997650146,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "Marvis-AI\/marvis-tts-250m-v0.2-MLX-8bit"
+    },
+    {
+      "displayName" : "GLM ASR Nano",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "4bit \/ default \/ transcription",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/GLM-ASR-Nano-2512-4bit"
+                ],
+                [
+                  "Quantization",
+                  "4bit"
+                ],
+                [
+                  "Load time",
+                  "0.78s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Batch size",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "GLM-based ASR"
+                ]
+              ],
+              "quantization" : "4bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_001",
+                  "inputDurationSec" : 1.8459375,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 2148388372,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.20170807838439941,
+                  "realTimeFactor" : 0.10927134769427427,
+                  "residentMB" : 1402.1875,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 34.70361750539287,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_002",
+                  "inputDurationSec" : 1.4301875,
+                  "outputPreview" : "What's the weather like today?",
+                  "peakGPU" : 2148388372,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.1555919647216797,
+                  "realTimeFactor" : 0.10879130514123476,
+                  "residentMB" : 1404.109375,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 32.13533558075391,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_003",
+                  "inputDurationSec" : 2.7095,
+                  "outputPreview" : "Let me check my calendar for tomorrow afternoon.",
+                  "peakGPU" : 2259537428,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.21037495136260986,
+                  "realTimeFactor" : 0.07764345870552126,
+                  "residentMB" : 1405.390625,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 38.027340936663656,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_004",
+                  "inputDurationSec" : 3.7578125,
+                  "outputPreview" : "I need to send an email to the marketing team about the quarterly report.",
+                  "peakGPU" : 2587479572,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.27294301986694336,
+                  "realTimeFactor" : 0.07263348553631757,
+                  "residentMB" : 1406.34375,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 51.292757026081276,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_005",
+                  "inputDurationSec" : 2.9486875,
+                  "outputPreview" : "Can you remind me to pick up groceries at five thirty?",
+                  "peakGPU" : 2587479572,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.2511509656906128,
+                  "realTimeFactor" : 0.08517381570295691,
+                  "residentMB" : 1407.125,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 43.798358368849165,
+                  "workload" : "transcription"
+                }
+              ],
+              "workload" : "transcription"
+            }
+          ],
+          "pipeline" : "stt"
+        }
+      ],
+      "repoId" : "mlx-community\/GLM-ASR-Nano-2512-4bit"
+    },
+    {
+      "displayName" : "Granite Speech 1B",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "5bit \/ default \/ transcription",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/granite-4.0-1b-speech-5bit"
+                ],
+                [
+                  "Quantization",
+                  "5bit"
+                ],
+                [
+                  "Load time",
+                  "58.86s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Batch size",
+                  "1"
+                ]
+              ],
+              "quantization" : "5bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.06451612903225806,
+                  "fixture" : "clean_001",
+                  "inputDurationSec" : 1.8459375,
+                  "outputPreview" : "sure i can help you with that",
+                  "peakGPU" : 4223621468,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.6739449501037598,
+                  "realTimeFactor" : 0.365096299362118,
+                  "residentMB" : 2811.921875,
+                  "semanticWER" : 0,
+                  "wer" : 0.2857142857142857,
+                  "wordsPerSec" : 10.38660501710457,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.03333333333333333,
+                  "fixture" : "clean_002",
+                  "inputDurationSec" : 1.4301875,
+                  "outputPreview" : "what's the weather like today",
+                  "peakGPU" : 4223621468,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.6177049875259399,
+                  "realTimeFactor" : 0.43190489885133243,
+                  "residentMB" : 2814.34375,
+                  "semanticWER" : 0,
+                  "wer" : 0.2,
+                  "wordsPerSec" : 8.094478919502054,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.020833333333333332,
+                  "fixture" : "clean_003",
+                  "inputDurationSec" : 2.7095,
+                  "outputPreview" : "let me check my calendar for tomorrow afternoon",
+                  "peakGPU" : 4290286272,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.8403940200805664,
+                  "realTimeFactor" : 0.31016572064239395,
+                  "residentMB" : 2815.859375,
+                  "semanticWER" : 0,
+                  "wer" : 0.125,
+                  "wordsPerSec" : 9.519344270480483,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.0136986301369863,
+                  "fixture" : "clean_004",
+                  "inputDurationSec" : 3.7578125,
+                  "outputPreview" : "i need to send an email to the marketing team about the quarterly report",
+                  "peakGPU" : 4355624830,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 1.3138930797576904,
+                  "realTimeFactor" : 0.3496430648835434,
+                  "residentMB" : 2818.296875,
+                  "semanticWER" : 0,
+                  "wer" : 0.07142857142857142,
+                  "wordsPerSec" : 10.655357133460125,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.2222222222222222,
+                  "fixture" : "clean_005",
+                  "inputDurationSec" : 2.9486875,
+                  "outputPreview" : "can you remind me to pick up groceries at 5.30",
+                  "peakGPU" : 4355624830,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 1.237089991569519,
+                  "realTimeFactor" : 0.41953919890443425,
+                  "residentMB" : 2818.5,
+                  "semanticWER" : 0.18181818181818182,
+                  "wer" : 0.18181818181818182,
+                  "wordsPerSec" : 8.083486301035233,
+                  "workload" : "transcription"
+                }
+              ],
+              "workload" : "transcription"
+            }
+          ],
+          "pipeline" : "stt"
+        }
+      ],
+      "repoId" : "mlx-community\/granite-4.0-1b-speech-5bit"
+    },
+    {
+      "displayName" : "Pocket TTS",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/pocket-tts"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "0.07s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Smallest, fastest TTS"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 195.64162503761662,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 2.08,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 1247896333,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.15845298767089844,
+                  "realTimeFactor" : 13.126921938007825,
+                  "residentMB" : 329.84375,
+                  "samplesPerSec" : 315046.12651218777,
+                  "ttftMs" : 158.43498706817627,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 158.35938379985893,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 3.12,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 2191720408,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.37888503074645996,
+                  "realTimeFactor" : 8.234687957592664,
+                  "residentMB" : 341.953125,
+                  "samplesPerSec" : 197632.51098222393,
+                  "ttftMs" : 378.8590431213379,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 218.2257409754636,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 3.92,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 2210363860,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.3803400993347168,
+                  "realTimeFactor" : 10.306565115949606,
+                  "residentMB" : 343.953125,
+                  "samplesPerSec" : 247357.56278279054,
+                  "ttftMs" : 380.3210258483887,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/pocket-tts"
+    },
+    {
+      "displayName" : "Soprano",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/Soprano-1.1-80M-bf16"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "0.21s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 102.83596110970066,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 1.792,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 335128780,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.3014509677886963,
+                  "realTimeFactor" : 5.94458200995431,
+                  "residentMB" : 395.34375,
+                  "samplesPerSec" : 190226.6243185379,
+                  "ttftMs" : 301.44202709198,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 108.36545759061934,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 3.456,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 384050020,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.5536819696426392,
+                  "realTimeFactor" : 6.241850357219674,
+                  "residentMB" : 399.734375,
+                  "samplesPerSec" : 199739.21143102957,
+                  "ttftMs" : 553.6669492721558,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 137.3006198750469,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 3.776,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 384050020,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.6045129299163818,
+                  "realTimeFactor" : 6.246351092146711,
+                  "residentMB" : 400.921875,
+                  "samplesPerSec" : 199883.23494869476,
+                  "ttftMs" : 604.5029163360596,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            },
+            {
+              "key" : "bf16-80m \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/Soprano-80M-bf16"
+                ],
+                [
+                  "Quantization",
+                  "bf16-80m"
+                ],
+                [
+                  "Load time",
+                  "0.16s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ]
+              ],
+              "quantization" : "bf16-80m",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 123.25943902411278,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 1.6,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 253470528,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.25150203704833984,
+                  "realTimeFactor" : 6.361777498018725,
+                  "residentMB" : 334.6875,
+                  "samplesPerSec" : 203576.87993659917,
+                  "ttftMs" : 251.49202346801758,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 136.37972856093072,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 2.944,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 283578204,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.43994808197021484,
+                  "realTimeFactor" : 6.691698681389667,
+                  "residentMB" : 338.0625,
+                  "samplesPerSec" : 214134.35780446936,
+                  "ttftMs" : 439.9360418319702,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 125.5289470149543,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 4.288,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 283578204,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.661202073097229,
+                  "realTimeFactor" : 6.4851581301219765,
+                  "residentMB" : 339.640625,
+                  "samplesPerSec" : 207525.06016390325,
+                  "ttftMs" : 661.1850261688232,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/Soprano-1.1-80M-bf16"
+    },
+    {
+      "displayName" : "Vyvo TTS (Qwen3 backbone)",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "4bit \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/VyvoTTS-EN-Beta-4bit"
+                ],
+                [
+                  "Quantization",
+                  "4bit"
+                ],
+                [
+                  "Load time",
+                  "1.31s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Qwen3-based TTS"
+                ]
+              ],
+              "quantization" : "4bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 18.461831962706434,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 1.9626666666666666,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 1731797980,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 1.6791399717330933,
+                  "realTimeFactor" : 1.168852328993715,
+                  "residentMB" : 1303.84375,
+                  "samplesPerSec" : 28052.455895849158,
+                  "ttftMs" : 1679.1259050369263,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 20.37222763318611,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 3.328,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 1973872234,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 2.9451860189437866,
+                  "realTimeFactor" : 1.1299795593873896,
+                  "residentMB" : 1305.34375,
+                  "samplesPerSec" : 27119.50942529735,
+                  "ttftMs" : 2945.152997970581,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 24.3118435473324,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 3.925333333333333,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 2122852142,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 3.4139739274978638,
+                  "realTimeFactor" : 1.1497842153148046,
+                  "residentMB" : 1306.046875,
+                  "samplesPerSec" : 27594.821167555314,
+                  "ttftMs" : 3413.961887359619,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/VyvoTTS-EN-Beta-4bit"
+    },
+    {
+      "displayName" : "Qwen3 TTS 0.6B Base",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "4bit \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/Qwen3-TTS-12Hz-0.6B-Base-4bit"
+                ],
+                [
+                  "Quantization",
+                  "4bit"
+                ],
+                [
+                  "Load time",
+                  "0.85s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Qwen3 audio-token TTS; multilingual"
+                ]
+              ],
+              "quantization" : "4bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 39.842895284462266,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 2.48,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 4333442755,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.7780559062957764,
+                  "realTimeFactor" : 3.1874316227569808,
+                  "residentMB" : 1803.390625,
+                  "samplesPerSec" : 76498.35894616754,
+                  "ttftMs" : 601.8139123916626,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 62.01870752218054,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 2.96,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 4333442755,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.9674500226974487,
+                  "realTimeFactor" : 3.0595895710942402,
+                  "residentMB" : 1804.921875,
+                  "samplesPerSec" : 73430.14970626176,
+                  "ttftMs" : 632.2120428085327,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 45.66989011484928,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 6,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 4574743039,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 1.817389965057373,
+                  "realTimeFactor" : 3.301437839627659,
+                  "residentMB" : 1797.109375,
+                  "samplesPerSec" : 79234.50815106381,
+                  "ttftMs" : 570.5639123916626,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            },
+            {
+              "key" : "8bit \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/Qwen3-TTS-12Hz-0.6B-Base-8bit"
+                ],
+                [
+                  "Quantization",
+                  "8bit"
+                ],
+                [
+                  "Load time",
+                  "0.83s"
+                ],
+                [
+                  "Warmup runs",
+                  "0"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Qwen3 audio-token TTS; multilingual"
+                ]
+              ],
+              "quantization" : "8bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 53.70048375419356,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 1.76,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 4599414050,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 0.5772759914398193,
+                  "realTimeFactor" : 3.0488016583026023,
+                  "residentMB" : 2077.578125,
+                  "samplesPerSec" : 73171.23979926245,
+                  "ttftMs" : 577.1840810775757,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 58.051391734527556,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 3.36,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 4613428987,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 1.033566951751709,
+                  "realTimeFactor" : 3.250877937133543,
+                  "residentMB" : 2083.71875,
+                  "samplesPerSec" : 78021.07049120503,
+                  "ttftMs" : 600.7659435272217,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/Qwen3-TTS-12Hz-0.6B-Base-4bit"
+    },
+    {
+      "displayName" : "FishSpeech S2 Pro",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "8bit \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/fish-audio-s2-pro-8bit"
+                ],
+                [
+                  "Quantization",
+                  "8bit"
+                ],
+                [
+                  "Load time",
+                  "149.01s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Voice cloning; reference-audio + reference-text conditioned"
+                ]
+              ],
+              "quantization" : "8bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 8.714432770176327,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 0.9752380952380952,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 9693383427,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 3.557317018508911,
+                  "realTimeFactor" : 0.27414989728603867,
+                  "residentMB" : 6472.28125,
+                  "samplesPerSec" : 12090.010470314304,
+                  "ttftMs" : 3557.2999715805054,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 6.419206964768381,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 2.786394557823129,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 10746615087,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 9.346948981285095,
+                  "realTimeFactor" : 0.298107389202849,
+                  "residentMB" : 6473.859375,
+                  "samplesPerSec" : 13146.535863845644,
+                  "ttftMs" : 9346.935987472534,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 10.74771466460036,
+                  "fixture" : "conv_003",
+                  "inputCharacters" : 83,
+                  "outputDurationSec" : 2.2755555555555556,
+                  "outputPreview" : "I found three results that match your search. Would you like me to go through them?",
+                  "peakGPU" : 10746615087,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 7.722571969032288,
+                  "realTimeFactor" : 0.2946629134284008,
+                  "residentMB" : 6473.28125,
+                  "samplesPerSec" : 12994.634482192474,
+                  "ttftMs" : 7722.557902336121,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/fish-audio-s2-pro-8bit"
+    },
+    {
+      "displayName" : "MOSS-TTS Nano 100M",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ synthesis",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/MOSS-TTS-Nano-100M"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "0.04s"
+                ],
+                [
+                  "Warmup runs",
+                  "0"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "MOSS Nano; voice-clone via reference audio"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 7.275927819347085,
+                  "fixture" : "conv_001",
+                  "inputCharacters" : 31,
+                  "outputDurationSec" : 4.1666666666666665e-05,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 1027986158,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 4.260625004768372,
+                  "realTimeFactor" : 9.779472875466512e-06,
+                  "residentMB" : 433.796875,
+                  "samplesPerSec" : 0.46941469802239255,
+                  "ttftMs" : 4260.600924491882,
+                  "workload" : "synthesis"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "charsPerSec" : 7.132365756316284,
+                  "fixture" : "conv_002",
+                  "inputCharacters" : 60,
+                  "outputDurationSec" : 4.1666666666666665e-05,
+                  "outputPreview" : "That's a great question! Let me think about it for a moment.",
+                  "peakGPU" : 3812236350,
+                  "pipeline" : "tts",
+                  "processingTimeSec" : 8.41235601902008,
+                  "realTimeFactor" : 4.953031775219641e-06,
+                  "residentMB" : 441.984375,
+                  "samplesPerSec" : 0.2377455252105428,
+                  "ttftMs" : 8412.337064743042,
+                  "workload" : "synthesis"
+                }
+              ],
+              "workload" : "synthesis"
+            }
+          ],
+          "pipeline" : "tts"
+        }
+      ],
+      "repoId" : "mlx-community\/MOSS-TTS-Nano-100M"
+    },
+    {
+      "displayName" : "Mimi",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ encode-decode",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "kyutai\/moshiko-pytorch-bf16"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "0.10s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Filename",
+                  "tokenizer-e351c8d8-checkpoint125.safetensors"
+                ],
+                [
+                  "Notes",
+                  "Kyutai Moshi tokenizer"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "decodeRTF" : 63.47887466706494,
+                  "encodeRTF" : 46.12209639905229,
+                  "fixture" : "intention",
+                  "inputDurationSec" : 1.52,
+                  "peakGPU" : 1157631544,
+                  "pipeline" : "codec",
+                  "processingTimeSec" : 0.056900978088378906,
+                  "realTimeFactor" : 26.71307332607056,
+                  "residentMB" : 460.53125,
+                  "siSnrDB" : 15.1389741897583,
+                  "workload" : "encode-decode"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "decodeRTF" : 103.85597962629744,
+                  "encodeRTF" : 175.5998074926874,
+                  "fixture" : "conversational_a",
+                  "inputDurationSec" : 13.258666666666667,
+                  "peakGPU" : 5192753420,
+                  "pipeline" : "codec",
+                  "processingTimeSec" : 0.20316898822784424,
+                  "realTimeFactor" : 65.25930351042409,
+                  "residentMB" : 465.015625,
+                  "siSnrDB" : 4.792599201202393,
+                  "workload" : "encode-decode"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "decodeRTF" : 63.66383559710118,
+                  "encodeRTF" : 110.7787227299139,
+                  "fixture" : "noisy_audio",
+                  "inputDurationSec" : 10,
+                  "peakGPU" : 6743629340,
+                  "pipeline" : "codec",
+                  "processingTimeSec" : 0.24734508991241455,
+                  "realTimeFactor" : 40.42934510461082,
+                  "residentMB" : 468.015625,
+                  "siSnrDB" : 5.726187705993652,
+                  "workload" : "encode-decode"
+                }
+              ],
+              "workload" : "encode-decode"
+            }
+          ],
+          "pipeline" : "codec"
+        }
+      ],
+      "repoId" : "kyutai\/moshiko-pytorch-bf16"
+    },
+    {
+      "displayName" : "Silero VAD",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "fp32 \/ default \/ diarization",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/silero-vad"
+                ],
+                [
+                  "Quantization",
+                  "fp32"
+                ],
+                [
+                  "Load time",
+                  "0.71s"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Lightweight voice activity detection; speech-presence only"
+                ]
+              ],
+              "quantization" : "fp32",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "multi_speaker",
+                  "inputDurationSec" : 30,
+                  "outputPreview" : "3 segments",
+                  "peakGPU" : 11412644,
+                  "pipeline" : "vad",
+                  "processingTimeSec" : 0.34053492546081543,
+                  "realTimeFactor" : 88.0966906974481,
+                  "residentMB" : 115.28125,
+                  "workload" : "diarization"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "false_turn",
+                  "inputDurationSec" : 10.1578125,
+                  "outputPreview" : "1 segments",
+                  "peakGPU" : 11412644,
+                  "pipeline" : "vad",
+                  "processingTimeSec" : 0.047441959381103516,
+                  "realTimeFactor" : 214.11030725779705,
+                  "residentMB" : 117.546875,
+                  "workload" : "diarization"
+                }
+              ],
+              "workload" : "diarization"
+            }
+          ],
+          "pipeline" : "vad"
+        }
+      ],
+      "repoId" : "mlx-community\/silero-vad"
+    },
+    {
+      "displayName" : "MMS-LID-256 (Wav2Vec2)",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ classify",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "facebook\/mms-lid-256"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "71.25s"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "256-language coverage"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "intention_en",
+                  "inputDurationSec" : 1.52,
+                  "outputPreview" : "top1=mon top3=mon,deu,ltz",
+                  "peakGPU" : 4762542336,
+                  "pipeline" : "lid",
+                  "processingTimeSec" : 0.24302899837493896,
+                  "realTimeFactor" : 6.254397665150159,
+                  "residentMB" : 4530.96875,
+                  "top1Accuracy" : 0,
+                  "top3Accuracy" : 0,
+                  "workload" : "classify"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "conversational_en",
+                  "inputDurationSec" : 13.258666666666667,
+                  "outputPreview" : "top1=eng top3=eng,spa,lat",
+                  "peakGPU" : 6153411812,
+                  "pipeline" : "lid",
+                  "processingTimeSec" : 0.4481149911880493,
+                  "realTimeFactor" : 29.587643634762333,
+                  "residentMB" : 4533.453125,
+                  "top1Accuracy" : 0,
+                  "top3Accuracy" : 0,
+                  "workload" : "classify"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "conversational_fr",
+                  "inputDurationSec" : 6.948583333333334,
+                  "outputPreview" : "top1=fra top3=fra,hat,lin",
+                  "peakGPU" : 6153411812,
+                  "pipeline" : "lid",
+                  "processingTimeSec" : 0.2396070957183838,
+                  "realTimeFactor" : 28.999906336247143,
+                  "residentMB" : 4534.296875,
+                  "top1Accuracy" : 0,
+                  "top3Accuracy" : 0,
+                  "workload" : "classify"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "intention_en",
+                  "inputDurationSec" : 1.52,
+                  "outputPreview" : "top1=mon top3=mon,deu,ltz",
+                  "peakGPU" : 4762542336,
+                  "pipeline" : "lid",
+                  "processingTimeSec" : 0.10125696659088135,
+                  "realTimeFactor" : 15.011312813086809,
+                  "residentMB" : 3780.3125,
+                  "top1Accuracy" : 0,
+                  "top3Accuracy" : 0,
+                  "workload" : "classify"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "conversational_en",
+                  "inputDurationSec" : 13.258666666666667,
+                  "outputPreview" : "top1=eng top3=eng,spa,lat",
+                  "peakGPU" : 6153411812,
+                  "pipeline" : "lid",
+                  "processingTimeSec" : 0.42143797874450684,
+                  "realTimeFactor" : 31.46054066167734,
+                  "residentMB" : 3784.875,
+                  "top1Accuracy" : 0,
+                  "top3Accuracy" : 0,
+                  "workload" : "classify"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "conversational_fr",
+                  "inputDurationSec" : 6.948583333333334,
+                  "outputPreview" : "top1=fra top3=fra,hat,lin",
+                  "peakGPU" : 6153411812,
+                  "pipeline" : "lid",
+                  "processingTimeSec" : 0.2414180040359497,
+                  "realTimeFactor" : 28.782374210577167,
+                  "residentMB" : 3785.984375,
+                  "top1Accuracy" : 0,
+                  "top3Accuracy" : 0,
+                  "workload" : "classify"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "intention_en",
+                  "inputDurationSec" : 1.52,
+                  "outputPreview" : "top1=mon top3=mon,deu,ltz",
+                  "peakGPU" : 4762542336,
+                  "pipeline" : "lid",
+                  "processingTimeSec" : 0.10169494152069092,
+                  "realTimeFactor" : 14.946662806141049,
+                  "residentMB" : 3780.734375,
+                  "top1Accuracy" : 0,
+                  "top3Accuracy" : 0,
+                  "workload" : "classify"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "conversational_en",
+                  "inputDurationSec" : 13.258666666666667,
+                  "outputPreview" : "top1=eng top3=eng,spa,lat",
+                  "peakGPU" : 6153411812,
+                  "pipeline" : "lid",
+                  "processingTimeSec" : 0.44930410385131836,
+                  "realTimeFactor" : 29.509338002962384,
+                  "residentMB" : 3785.28125,
+                  "top1Accuracy" : 1,
+                  "top3Accuracy" : 1,
+                  "workload" : "classify"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "conversational_fr",
+                  "inputDurationSec" : 6.948583333333334,
+                  "outputPreview" : "top1=fra top3=fra,hat,lin",
+                  "peakGPU" : 6153411812,
+                  "pipeline" : "lid",
+                  "processingTimeSec" : 0.23933100700378418,
+                  "realTimeFactor" : 29.033360199848513,
+                  "residentMB" : 3786.328125,
+                  "top1Accuracy" : 1,
+                  "top3Accuracy" : 1,
+                  "workload" : "classify"
+                }
+              ],
+              "workload" : "classify"
+            }
+          ],
+          "pipeline" : "lid"
+        }
+      ],
+      "repoId" : "facebook\/mms-lid-256"
+    },
+    {
+      "displayName" : "LFM2.5 Audio 1.5B",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "6bit \/ default \/ understand",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/LFM2.5-Audio-1.5B-6bit"
+                ],
+                [
+                  "Quantization",
+                  "6bit"
+                ],
+                [
+                  "Load time",
+                  "0.55s"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Speech understanding"
+                ]
+              ],
+              "quantization" : "6bit",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "math_qa",
+                  "outputPreview" : "2 plus 2 equals 4.",
+                  "peakGPU" : 1543179992,
+                  "pipeline" : "sts",
+                  "processingTimeSec" : 1.340304970741272,
+                  "residentMB" : 1493.9375,
+                  "workload" : "understand"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "summarize_request",
+                  "outputPreview" : "The quick brown fox jumps over the lazy dog.",
+                  "peakGPU" : 1543179992,
+                  "pipeline" : "sts",
+                  "processingTimeSec" : 0.9744839668273926,
+                  "residentMB" : 1495.9375,
+                  "workload" : "understand"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "fixture" : "translation_request",
+                  "outputPreview" : "Bonjour, comment ça va?",
+                  "peakGPU" : 1561469952,
+                  "pipeline" : "sts",
+                  "processingTimeSec" : 0.8409409523010254,
+                  "residentMB" : 1496.46875,
+                  "workload" : "understand"
+                }
+              ],
+              "workload" : "understand"
+            }
+          ],
+          "pipeline" : "sts"
+        }
+      ],
+      "repoId" : "mlx-community\/LFM2.5-Audio-1.5B-6bit"
+    },
+    {
+      "displayName" : "Parakeet TDT 0.6B v3",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ transcription",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/parakeet-tdt-0.6b-v3"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "0.52s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Batch size",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "TDT decoder; multilingual; supports batched inference"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_001",
+                  "inputDurationSec" : 1.8459375,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 3803983368,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.03197300434112549,
+                  "realTimeFactor" : 0.017320740459048852,
+                  "residentMB" : 2581.28125,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 218.93469644941072,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_002",
+                  "inputDurationSec" : 1.4301875,
+                  "outputPreview" : "What's the weather like today?",
+                  "peakGPU" : 3803983368,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.03232395648956299,
+                  "realTimeFactor" : 0.022601201933007378,
+                  "residentMB" : 2583.046875,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 154.6840344750012,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_003",
+                  "inputDurationSec" : 2.7095,
+                  "outputPreview" : "Let me check my calendar for tomorrow afternoon.",
+                  "peakGPU" : 3803983368,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.04072999954223633,
+                  "realTimeFactor" : 0.015032293612192778,
+                  "residentMB" : 2584.3125,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 196.41542081786997,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_004",
+                  "inputDurationSec" : 3.7578125,
+                  "outputPreview" : "I need to send an email to the marketing team about the quarterly report.",
+                  "peakGPU" : 3803983368,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.04156303405761719,
+                  "realTimeFactor" : 0.011060433179573805,
+                  "residentMB" : 2585.515625,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 336.8377770639255,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0.18518518518518517,
+                  "fixture" : "clean_005",
+                  "inputDurationSec" : 2.9486875,
+                  "outputPreview" : "Can you remind me to pick up groceries at 5 30?",
+                  "peakGPU" : 3803983368,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.04002702236175537,
+                  "realTimeFactor" : 0.01357452166828644,
+                  "residentMB" : 2586.28125,
+                  "semanticWER" : 0.18181818181818182,
+                  "wer" : 0.18181818181818182,
+                  "wordsPerSec" : 274.81434668270936,
+                  "workload" : "transcription"
+                }
+              ],
+              "workload" : "transcription"
+            }
+          ],
+          "pipeline" : "stt"
+        }
+      ],
+      "repoId" : "mlx-community\/parakeet-tdt-0.6b-v3"
+    },
+    {
+      "displayName" : "Qwen3 ASR 1.7B",
+      "pipelines" : [
+        {
+          "configs" : [
+            {
+              "key" : "bf16 \/ default \/ transcription",
+              "kvConfig" : "default",
+              "parameterRows" : [
+                [
+                  "Repo",
+                  "mlx-community\/Qwen3-ASR-1.7B-bf16"
+                ],
+                [
+                  "Quantization",
+                  "bf16"
+                ],
+                [
+                  "Load time",
+                  "88.66s"
+                ],
+                [
+                  "Warmup runs",
+                  "1"
+                ],
+                [
+                  "Timed runs",
+                  "1"
+                ],
+                [
+                  "Batch size",
+                  "1"
+                ],
+                [
+                  "Notes",
+                  "Larger Qwen3-ASR; multilingual"
+                ]
+              ],
+              "quantization" : "bf16",
+              "rows" : [
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_001",
+                  "inputDurationSec" : 1.8459375,
+                  "outputPreview" : "Sure, I can help you with that.",
+                  "peakGPU" : 5381023880,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.2781040668487549,
+                  "realTimeFactor" : 0.1506573580355537,
+                  "residentMB" : 5758.546875,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 25.170433785158938,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_002",
+                  "inputDurationSec" : 1.4301875,
+                  "outputPreview" : "What's the weather like today?",
+                  "peakGPU" : 5381023880,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.24716293811798096,
+                  "realTimeFactor" : 0.1728185556914607,
+                  "residentMB" : 5759.546875,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 20.229570169672023,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_003",
+                  "inputDurationSec" : 2.7095,
+                  "outputPreview" : "Let me check my calendar for tomorrow afternoon.",
+                  "peakGPU" : 5381023880,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.279555082321167,
+                  "realTimeFactor" : 0.10317589308771619,
+                  "residentMB" : 5760.125,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 28.61690058923413,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_004",
+                  "inputDurationSec" : 3.7578125,
+                  "outputPreview" : "I need to send an email to the marketing team about the quarterly report.",
+                  "peakGPU" : 5402674256,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.3800089359283447,
+                  "realTimeFactor" : 0.10112503908280275,
+                  "residentMB" : 5760.78125,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 36.841238919286546,
+                  "workload" : "transcription"
+                },
+                {
+                  "baselineGPU" : 0,
+                  "batchSize" : 1,
+                  "cer" : 0,
+                  "fixture" : "clean_005",
+                  "inputDurationSec" : 2.9486875,
+                  "outputPreview" : "Can you remind me to pick up groceries at five thirty?",
+                  "peakGPU" : 5402674256,
+                  "pipeline" : "stt",
+                  "processingTimeSec" : 0.41309797763824463,
+                  "realTimeFactor" : 0.14009554340303765,
+                  "residentMB" : 5761.125,
+                  "semanticWER" : 0,
+                  "wer" : 0,
+                  "wordsPerSec" : 26.628065484340972,
+                  "workload" : "transcription"
+                }
+              ],
+              "workload" : "transcription"
+            }
+          ],
+          "pipeline" : "stt"
+        }
+      ],
+      "repoId" : "mlx-community\/Qwen3-ASR-1.7B-bf16"
+    }
+  ],
+  "osVersion" : "26.4.1",
+  "systemRAM" : "64GB"
+}

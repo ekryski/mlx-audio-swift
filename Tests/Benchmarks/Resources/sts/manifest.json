@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "samples": [
+    {
+      "id": "math_qa",
+      "text": "What is 2 plus 2?",
+      "domain": "reasoning",
+      "condition": "text-to-text",
+      "source": "synthetic"
+    },
+    {
+      "id": "summarize_request",
+      "text": "Summarize: The quick brown fox jumps over the lazy dog.",
+      "domain": "summarization",
+      "condition": "text-to-text",
+      "source": "synthetic"
+    },
+    {
+      "id": "translation_request",
+      "text": "Translate to French: Hello, how are you?",
+      "domain": "translation",
+      "condition": "text-to-text",
+      "source": "synthetic"
+    }
+  ]
+}
