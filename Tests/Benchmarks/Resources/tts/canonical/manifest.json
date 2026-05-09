@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "inputs": [
+  "samples": [
     {
       "id": "conv_001",
       "text": "Sure, I can help you with that.",

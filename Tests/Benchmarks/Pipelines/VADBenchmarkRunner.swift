@@ -89,7 +89,7 @@ enum VADBenchmarkRunner {
             return
         }
 
-        print("[MEM] peak=\(Memory.peakMemory)")
+        print("[MEM] peak=\(BenchmarkWriter.formatBytes(Memory.peakMemory))")
     }
 
     private static func resolveManifestURL(pipeline: ModelRegistry.Pipeline, bundle: Bundle) throws -> URL {

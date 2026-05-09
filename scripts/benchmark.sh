@@ -179,8 +179,29 @@ for pipeline in "${PIPELINE_ARR[@]}"; do
                     fi
                     EXIT=${PIPESTATUS[0]}
 
-                    if [ "$EXIT" -ne 0 ]; then
-                        echo "[bench] run failed (exit=$EXIT): $desc"
+                    # `script -q /dev/null` swallows the wrapped command's exit code
+                    # on macOS — a Swift Testing test that throws after the test
+                    # harness has reported "passed" (e.g. an MLX runtime error in a
+                    # deinit) still leaves EXIT=0. Scan the captured output for
+                    # known fatal markers so we don't paper over crashes.
+                    POST_HOC_FAIL=0
+                    # Native crashes / runtime errors that exit() cleanly past the test harness.
+                    if grep -qE "MLX error|fatal error|Fatal error|terminating with uncaught exception|libc\+\+abi" "$TMPOUT"; then
+                        POST_HOC_FAIL=1
+                    fi
+                    # Swift Testing failure markers — `Test foo failed` and
+                    # `recorded an issue` both indicate a test the harness
+                    # caught but `script` propagated as exit 0.
+                    if grep -qE "Test .* failed|recorded an issue|with [0-9]+ issue" "$TMPOUT"; then
+                        POST_HOC_FAIL=1
+                    fi
+
+                    if [ "$EXIT" -ne 0 ] || [ "$POST_HOC_FAIL" -eq 1 ]; then
+                        if [ "$EXIT" -ne 0 ]; then
+                            echo "[bench] run failed (exit=$EXIT): $desc"
+                        else
+                            echo "[bench] run failed (fatal output detected, exit=$EXIT): $desc"
+                        fi
                         grep -iE "error|fatal|threw|exception|issue" "$TMPOUT" | tail -10
                         FAILED_RUNS+=("$desc")
                     fi
