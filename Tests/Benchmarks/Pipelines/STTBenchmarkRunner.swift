@@ -155,13 +155,13 @@ enum STTBenchmarkRunner {
         // below stays narrow on purpose: it's the only place per-model API
         // differences leak in. New families add a new branch.
         switch family {
-        case "parakeet-tdt-0.6b-v2":
+        case "parakeet-tdt-0.6b-v2", "parakeet-tdt-0.6b-v3":
             let model = try await ParakeetModel.fromPretrained(repoId)
             return { audio in
                 let out = model.generate(audio: audio, generationParameters: STTGenerateParameters())
                 return TranscriptionResult(text: out.text, durationSec: 0, firstTokenLatencyMs: nil)
             }
-        case "qwen3-asr-0.6b":
+        case "qwen3-asr-0.6b", "qwen3-asr-1.7b":
             let model = try await Qwen3ASRModel.fromPretrained(repoId)
             return { audio in
                 let out = model.generate(audio: audio)

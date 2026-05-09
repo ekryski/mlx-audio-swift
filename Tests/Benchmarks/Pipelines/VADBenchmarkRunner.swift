@@ -34,18 +34,25 @@ enum VADBenchmarkRunner {
         MLX.GPU.resetPeakMemory()
 
         let loadStart = Date()
+        // Load + dispatch is inlined per family — passing the model out
+        // through a closure trips Swift 6 strict-concurrency because the
+        // model isn't Sendable. Each branch loads, then runs the per-fixture
+        // loop directly, then returns. Add a new family by adding a case
+        // here that follows the same shape.
         switch family.shortName {
         case "sortformer-streaming-4spk":
-            let model = try await SortformerModel.fromPretrained(variant.repoId)
+            let model: SortformerModel
+            do {
+                model = try await SortformerModel.fromPretrained(variant.repoId)
+            } catch {
+                print("[BENCH] failed to load \(variant.repoId): \(error)")
+                return
+            }
             let loadDurationSec = Date().timeIntervalSince(loadStart)
             print("[BENCH] loaded in \(String(format: "%.2f", loadDurationSec))s")
-
             for sample in samples {
-                let url: URL
-                do {
-                    url = try FixtureLoader.resolveAudio(sample: sample, baseDir: baseDir, bundle: bundle, pipeline: .vad)
-                } catch {
-                    print("[BENCH] skip \(sample.id): \(error)")
+                guard let url = try? FixtureLoader.resolveAudio(sample: sample, baseDir: baseDir, bundle: bundle, pipeline: .vad) else {
+                    print("[BENCH] skip \(sample.id): audio missing")
                     continue
                 }
                 let (sampleRate, audio) = try loadAudioArray(from: url)
@@ -59,29 +66,40 @@ enum VADBenchmarkRunner {
                     elapsedTotal += Date().timeIntervalSince(runStart)
                     lastSegments = output.segments.count
                 }
-                let avgElapsed = elapsedTotal / Double(max(1, BenchmarkEnv.timedRuns))
-                let rtf = avgElapsed > 0 ? inputDurSec / avgElapsed : 0
+                emitResult(family: family, variant: variant, sample: sample, inputDurSec: inputDurSec,
+                           elapsedTotal: elapsedTotal, segments: lastSegments, workload: workload,
+                           baselineMem: baselineMem, loadDurationSec: loadDurationSec)
+            }
 
-                let result = BenchmarkWriter.Result(
-                    pipeline: .vad,
-                    workload: workload,
-                    fixture: sample.id,
-                    inputDurationSec: inputDurSec,
-                    processingTimeSec: avgElapsed,
-                    realTimeFactor: rtf,
-                    baselineGPU: baselineMem,
-                    peakGPU: Memory.peakMemory,
-                    residentMB: residentMB(),
-                    outputPreview: "\(lastSegments) segments"
-                )
-                BenchmarkWriter.append(
-                    model: family.name,
-                    repoId: variant.repoId,
-                    quantization: variant.quantization,
-                    result: result,
-                    parameters: parametersForReport(family: family, variant: variant, loadDurationSec: loadDurationSec)
-                )
-                print("[RESULT] \(sample.id) RTF=\(String(format: "%.2f", rtf)) segments=\(lastSegments)")
+        case "silero-vad":
+            let model: SileroVAD
+            do {
+                model = try await SileroVAD.fromPretrained(variant.repoId)
+            } catch {
+                print("[BENCH] failed to load \(variant.repoId): \(error)")
+                return
+            }
+            let loadDurationSec = Date().timeIntervalSince(loadStart)
+            print("[BENCH] loaded in \(String(format: "%.2f", loadDurationSec))s")
+            for sample in samples {
+                guard let url = try? FixtureLoader.resolveAudio(sample: sample, baseDir: baseDir, bundle: bundle, pipeline: .vad) else {
+                    print("[BENCH] skip \(sample.id): audio missing")
+                    continue
+                }
+                let (sampleRate, audio) = try loadAudioArray(from: url)
+                let inputDurSec = Double(audio.shape[0]) / Double(sampleRate)
+
+                var elapsedTotal: Double = 0
+                var lastSegments = 0
+                for _ in 0..<max(1, BenchmarkEnv.timedRuns) {
+                    let runStart = Date()
+                    let timestamps = try model.getSpeechTimestamps(audio, sampleRate: sampleRate)
+                    elapsedTotal += Date().timeIntervalSince(runStart)
+                    lastSegments = timestamps.count
+                }
+                emitResult(family: family, variant: variant, sample: sample, inputDurSec: inputDurSec,
+                           elapsedTotal: elapsedTotal, segments: lastSegments, workload: workload,
+                           baselineMem: baselineMem, loadDurationSec: loadDurationSec)
             }
 
         default:
@@ -90,6 +108,42 @@ enum VADBenchmarkRunner {
         }
 
         print("[MEM] peak=\(BenchmarkWriter.formatBytes(Memory.peakMemory))")
+    }
+
+    @MainActor
+    private static func emitResult(
+        family: ModelRegistry.ModelFamily,
+        variant: ModelRegistry.ModelVariant,
+        sample: FixtureSample,
+        inputDurSec: Double,
+        elapsedTotal: Double,
+        segments: Int,
+        workload: String,
+        baselineMem: Int,
+        loadDurationSec: Double
+    ) {
+        let avgElapsed = elapsedTotal / Double(max(1, BenchmarkEnv.timedRuns))
+        let rtf = avgElapsed > 0 ? inputDurSec / avgElapsed : 0
+        let result = BenchmarkWriter.Result(
+            pipeline: .vad,
+            workload: workload,
+            fixture: sample.id,
+            inputDurationSec: inputDurSec,
+            processingTimeSec: avgElapsed,
+            realTimeFactor: rtf,
+            baselineGPU: baselineMem,
+            peakGPU: Memory.peakMemory,
+            residentMB: residentMB(),
+            outputPreview: "\(segments) segments"
+        )
+        BenchmarkWriter.append(
+            model: family.name,
+            repoId: variant.repoId,
+            quantization: variant.quantization,
+            result: result,
+            parameters: parametersForReport(family: family, variant: variant, loadDurationSec: loadDurationSec)
+        )
+        print("[RESULT] \(sample.id) RTF=\(String(format: "%.2f", rtf)) segments=\(segments)")
     }
 
     private static func resolveManifestURL(pipeline: ModelRegistry.Pipeline, bundle: Bundle) throws -> URL {

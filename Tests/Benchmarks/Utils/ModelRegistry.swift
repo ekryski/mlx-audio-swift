@@ -59,6 +59,27 @@ enum ModelRegistry {
         /// Optional notes — emitted into the report's parameter table for
         /// reviewers (e.g. "TDT decoder", "non-streaming only").
         let notes: String?
+        /// True if the model needs a reference audio clip for inference
+        /// (voice cloning, e.g. Chatterbox, Marvis, FishSpeech). The TTS
+        /// runner will load `MLX_AUDIO_BENCH_REF_AUDIO` (with a fallback
+        /// to the bundled reference-outputs directory) when this is set.
+        let requiresReferenceAudio: Bool
+
+        init(
+            pipeline: Pipeline,
+            name: String,
+            shortName: String,
+            variants: [ModelVariant],
+            notes: String? = nil,
+            requiresReferenceAudio: Bool = false
+        ) {
+            self.pipeline = pipeline
+            self.name = name
+            self.shortName = shortName
+            self.variants = variants
+            self.notes = notes
+            self.requiresReferenceAudio = requiresReferenceAudio
+        }
     }
 
     // MARK: - Lookup
@@ -103,12 +124,31 @@ enum ModelRegistry {
         ),
         ModelFamily(
             pipeline: .stt,
+            name: "Parakeet TDT 0.6B v3",
+            shortName: "parakeet-tdt-0.6b-v3",
+            variants: [
+                ModelVariant(quantization: "bf16", repoId: "mlx-community/parakeet-tdt-0.6b-v3"),
+            ],
+            notes: "TDT decoder; multilingual; supports batched inference"
+        ),
+        ModelFamily(
+            pipeline: .stt,
             name: "Qwen3 ASR 0.6B",
             shortName: "qwen3-asr-0.6b",
             variants: [
                 ModelVariant(quantization: "4bit", repoId: "mlx-community/Qwen3-ASR-0.6B-4bit"),
+                ModelVariant(quantization: "bf16", repoId: "mlx-community/Qwen3-ASR-0.6B-bf16"),
             ],
             notes: "LLM-style decoder; multilingual"
+        ),
+        ModelFamily(
+            pipeline: .stt,
+            name: "Qwen3 ASR 1.7B",
+            shortName: "qwen3-asr-1.7b",
+            variants: [
+                ModelVariant(quantization: "bf16", repoId: "mlx-community/Qwen3-ASR-1.7B-bf16"),
+            ],
+            notes: "Larger Qwen3-ASR; multilingual"
         ),
         ModelFamily(
             pipeline: .stt,
@@ -144,6 +184,17 @@ enum ModelRegistry {
         ),
         ModelFamily(
             pipeline: .tts,
+            name: "Kitten TTS",
+            shortName: "kitten-tts",
+            variants: [
+                ModelVariant(quantization: "fp16", repoId: "mlx-community/kitten-tts-nano-0.8-fp16"),
+                ModelVariant(quantization: "8bit", repoId: "mlx-community/kitten-tts-nano-0.8-8bit"),
+                ModelVariant(quantization: "mini-fp16", repoId: "mlx-community/kitten-tts-mini-0.8-fp16"),
+            ],
+            notes: "StyleTTS2 family, smallest variant; 24kHz output"
+        ),
+        ModelFamily(
+            pipeline: .tts,
             name: "Echo TTS",
             shortName: "echo-tts",
             variants: [
@@ -159,7 +210,20 @@ enum ModelRegistry {
                 ModelVariant(quantization: "fp16", repoId: "mlx-community/Chatterbox-TTS-fp16"),
                 ModelVariant(quantization: "fp16-turbo", repoId: "mlx-community/chatterbox-turbo-fp16"),
             ],
-            notes: "Voice cloning; reference-audio conditioned"
+            notes: "Voice cloning; reference-audio conditioned",
+            requiresReferenceAudio: true
+        ),
+        ModelFamily(
+            pipeline: .tts,
+            name: "Marvis TTS (CSM/Sesame)",
+            shortName: "marvis-tts",
+            variants: [
+                ModelVariant(quantization: "8bit", repoId: "Marvis-AI/marvis-tts-250m-v0.2-MLX-8bit"),
+                ModelVariant(quantization: "4bit", repoId: "Marvis-AI/marvis-tts-250m-v0.2-MLX-4bit"),
+                ModelVariant(quantization: "100m-8bit", repoId: "Marvis-AI/marvis-tts-100m-v0.2-MLX-8bit"),
+            ],
+            notes: "CSM-based; voice cloning via reference audio",
+            requiresReferenceAudio: true
         ),
         ModelFamily(
             pipeline: .tts,
@@ -182,7 +246,7 @@ enum ModelRegistry {
         ),
         ModelFamily(
             pipeline: .tts,
-            name: "Vyvo TTS (Llama backbone)",
+            name: "Vyvo TTS (Qwen3 backbone)",
             shortName: "vyvo-tts",
             variants: [
                 ModelVariant(quantization: "4bit", repoId: "mlx-community/VyvoTTS-EN-Beta-4bit"),
@@ -197,6 +261,48 @@ enum ModelRegistry {
                 ModelVariant(quantization: "bf16", repoId: "mlx-community/orpheus-3b-0.1-ft-bf16"),
             ],
             notes: "Llama-backbone TTS"
+        ),
+        ModelFamily(
+            pipeline: .tts,
+            name: "Qwen3 TTS 0.6B Base",
+            shortName: "qwen3-tts",
+            variants: [
+                ModelVariant(quantization: "4bit", repoId: "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-4bit"),
+                ModelVariant(quantization: "8bit", repoId: "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"),
+                ModelVariant(quantization: "bf16", repoId: "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16"),
+            ],
+            notes: "Qwen3 audio-token TTS; multilingual"
+        ),
+        ModelFamily(
+            pipeline: .tts,
+            name: "FishSpeech S2 Pro",
+            shortName: "fish-speech",
+            variants: [
+                ModelVariant(quantization: "8bit", repoId: "mlx-community/fish-audio-s2-pro-8bit"),
+                ModelVariant(quantization: "bf16", repoId: "mlx-community/fish-audio-s2-pro-bf16"),
+            ],
+            notes: "Voice cloning; reference-audio + reference-text conditioned",
+            requiresReferenceAudio: true
+        ),
+        ModelFamily(
+            pipeline: .tts,
+            name: "MOSS-TTS Nano 100M",
+            shortName: "moss-tts-nano",
+            variants: [
+                ModelVariant(quantization: "bf16", repoId: "mlx-community/MOSS-TTS-Nano-100M"),
+            ],
+            notes: "MOSS Nano; voice-clone via reference audio",
+            requiresReferenceAudio: true
+        ),
+        ModelFamily(
+            pipeline: .tts,
+            name: "MOSS-TTS 8B",
+            shortName: "moss-tts",
+            variants: [
+                ModelVariant(quantization: "8bit", repoId: "mlx-community/MOSS-TTS-8B-8bit"),
+            ],
+            notes: "MOSS-TTSD 8B; multilingual + multi-speaker; voice-clone via reference audio",
+            requiresReferenceAudio: true
         ),
     ]
 
@@ -238,6 +344,16 @@ enum ModelRegistry {
                 ModelVariant(quantization: "fp16", repoId: "mlx-community/diar_streaming_sortformer_4spk-v2.1-fp16"),
             ],
             notes: "Speaker diarization; offline + streaming"
+        ),
+        ModelFamily(
+            pipeline: .vad,
+            name: "Silero VAD",
+            shortName: "silero-vad",
+            variants: [
+                ModelVariant(quantization: "fp32", repoId: "mlx-community/silero-vad"),
+                ModelVariant(quantization: "fp32-v6", repoId: "mlx-community/silero-vad-v6"),
+            ],
+            notes: "Lightweight voice activity detection; speech-presence only"
         ),
     ]
 

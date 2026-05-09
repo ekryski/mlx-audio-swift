@@ -82,6 +82,17 @@ enum BenchmarkEnv {
     /// When unset, runners pick a sensible default from the model.
     static var voice: String? { env("MLX_AUDIO_BENCH_VOICE") }
 
+    /// Reference-audio path for voice-cloning TTS (Chatterbox, Marvis,
+    /// FishSpeech). Either an absolute filesystem path or a path relative
+    /// to the project root. When unset, the runner picks the first .wav
+    /// it finds under `Resources/tts/reference-outputs/`.
+    static var refAudioPath: String? { env("MLX_AUDIO_BENCH_REF_AUDIO") }
+
+    /// Reference text — the transcript of `refAudioPath`. Required for
+    /// voice-cloning models that pair the audio with its transcript
+    /// (FishSpeech). Optional for models that infer (Chatterbox, Marvis).
+    static var refText: String? { env("MLX_AUDIO_BENCH_REF_TEXT") }
+
     /// Number of warmup runs before timed measurements. Defaults to 1.
     static var warmupRuns: Int { Int(env("MLX_AUDIO_BENCH_WARMUP") ?? "") ?? 1 }
 
